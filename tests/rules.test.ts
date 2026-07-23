@@ -22,7 +22,9 @@ import type {
 
 function sq(row: number, column: number): number {
   const square = coordinateToSquare(row, column);
-  assert.notEqual(square, null, `(${row}, ${column}) must be playable`);
+  if (square === null) {
+    throw new Error(`(${row}, ${column}) must be playable`);
+  }
   return square;
 }
 
@@ -77,7 +79,7 @@ test("men move one diagonal square forward only", () => {
   const moves = getLegalMoves(state, config());
 
   assert.deepEqual(
-    moves.map((move) => move.path[0]).sort((a, b) => a - b),
+    moves.map((move) => move.path[0]!).sort((a, b) => a - b),
     [sq(4, 3), sq(4, 5)].sort((a, b) => a - b),
   );
   assert.ok(moves.every((move) => move.capturedPieceIds.length === 0));

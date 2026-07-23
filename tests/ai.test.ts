@@ -29,7 +29,9 @@ import type { AIConfig } from "../packages/titan-ai/src/index.ts";
 
 function sq(row: number, column: number): number {
   const square = coordinateToSquare(row, column);
-  assert.notEqual(square, null, `(${row}, ${column}) must be playable`);
+  if (square === null) {
+    throw new Error(`(${row}, ${column}) must be playable`);
+  }
   return square;
 }
 
@@ -334,7 +336,9 @@ test("AI handles flying-king captures through engine-generated moves", () => {
   assertLegal(state, result.move);
   assert.equal(result.move.pieceId, "king");
   assert.deepEqual(result.move.capturedPieceIds, ["victim"]);
-  assert.ok(result.move.path[0] === sq(3, 6) || result.move.path[0] < sq(3, 6));
+  const landing = result.move.path[0];
+  if (landing === undefined) throw new Error("Expected a king landing.");
+  assert.ok(landing === sq(3, 6) || landing < sq(3, 6));
 });
 
 test("AI handles backward man captures through the engine", () => {
