@@ -466,7 +466,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   font-size: .7rem;
   cursor: pointer;
 }
-.controls-panel button:hover { color: var(--cream); border-color: rgba(255,200,87,.4); }
+.controls-panel button:hover:not(:disabled) { color: var(--cream); border-color: rgba(255,200,87,.4); }
+.controls-panel button:disabled {
+  color: rgba(167,185,177,.42);
+  cursor: not-allowed;
+  opacity: .5;
+}
 .controls-panel .danger-control { grid-column: 1 / -1; color: #dca4a2; border-color: rgba(194,82,80,.25); }
 
 .modal-backdrop {

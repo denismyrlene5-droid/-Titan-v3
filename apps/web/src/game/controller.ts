@@ -90,11 +90,9 @@ export function selectPiece(
   pieceId: string,
 ): GameSession {
   if (session.status !== "playing") return session;
+  if (session.pathPrefix.length > 0) return session;
   const view = interactionView(session);
   if (!view.selectablePieceIds.has(pieceId)) return session;
-  if (session.pathPrefix.length > 0 && session.selectedPieceId !== pieceId) {
-    return session;
-  }
   return Object.freeze({
     ...session,
     selectedPieceId: pieceId,

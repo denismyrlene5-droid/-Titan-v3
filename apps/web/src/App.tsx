@@ -16,6 +16,10 @@ import {
   restartGame,
   selectPiece,
 } from "./game/controller.ts";
+import {
+  ComputerActionGuard,
+  shouldDisableGameInput,
+} from "./game/input.ts";
 import { createMatch, recordGameResult } from "./game/match.ts";
 import type {
   BoardOrientation,
@@ -58,6 +62,12 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string>();
   const recordedResult = useRef<GameResult | undefined>(undefined);
+  const computerActionGuard = useRef(new ComputerActionGuard());
+
+  const cancelPendingComputerAction = () => {
+    computerActionGuard.current.cancel();
+    setThinking(false);
+  };
 
   const beginSetup = (opponent: OpponentType) => {
     setSetupOpponent(opponent);
@@ -65,6 +75,7 @@ export default function App() {
   };
 
   const startMatch = (options: GameOptions) => {
+    cancelPendingComputerAction();
     recordedResult.current = undefined;
     setSession(createGameSession(options));
     setMatch(createMatch(options.matchTarget));
@@ -74,6 +85,7 @@ export default function App() {
   };
 
   const beginRound = () => {
+    cancelPendingComputerAction();
     recordedResult.current = undefined;
     setSession((current) => createGameSession(current.options));
     setNotice(undefined);
@@ -100,15 +112,29 @@ export default function App() {
       setThinking(false);
       return;
     }
+    const actionGeneration = computerActionGuard.current.start();
+    const positionHash = session.board.positionHash;
     setThinking(true);
     const timer = window.setTimeout(() => {
+      if (!computerActionGuard.current.isCurrent(actionGeneration)) return;
       setSession((current) => {
+        if (
+          !computerActionGuard.current.isCurrent(actionGeneration) ||
+          current.board.positionHash !== positionHash
+        ) {
+          return current;
+        }
         const move = basicComputerPolicy.chooseMove(current.board);
         return move ? playCanonicalMove(current, move) : current;
       });
-      setThinking(false);
+      if (computerActionGuard.current.isCurrent(actionGeneration)) {
+        setThinking(false);
+      }
     }, 650);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      computerActionGuard.current.cancel();
+    };
   }, [computerTurn, session.board.positionHash]);
 
   useEffect(() => {
@@ -144,8 +170,11 @@ export default function App() {
   const player2 = playerName(session.options, 2);
   const round =
     session.status === "finished" ? Math.max(1, match.round - 1) : match.round;
-  const disabled =
-    thinking || session.status === "finished" || computerTurn;
+  const gameInputDisabled = shouldDisableGameInput({
+    computerTurn,
+    thinking,
+    status: session.status,
+  });
   const requestDraw = () => {
     if (session.status !== "playing") return;
     const offeredBy =
@@ -166,7 +195,14 @@ export default function App() {
   return (
     <main className="game-screen">
       <header className="game-header">
-        <button className="wordmark" type="button" onClick={() => setScreen("menu")}>
+        <button
+          className="wordmark"
+          type="button"
+          onClick={() => {
+            cancelPendingComputerAction();
+            setScreen("menu");
+          }}
+        >
           TITAN <span>V3</span>
         </button>
         <div className="match-strip">
@@ -235,7 +271,7 @@ export default function App() {
             session={session}
             orientation={orientation}
             appearance={session.options.pieceAppearance}
-            disabled={disabled}
+            disabled={gameInputDisabled}
             onPiece={(pieceId) =>
               setSession((current) => selectPiece(current, pieceId))
             }
@@ -260,8 +296,13 @@ export default function App() {
           </details>
           <GameControls
             sound={sound}
-            onNew={() => setScreen("setup")}
+            gameInputDisabled={gameInputDisabled}
+            onNew={() => {
+              cancelPendingComputerAction();
+              setScreen("setup");
+            }}
             onRestart={() => {
+              cancelPendingComputerAction();
               recordedResult.current = undefined;
               setSession((current) => restartGame(current));
             }}
@@ -325,7 +366,15 @@ export default function App() {
                 </button>
               )}
               <button type="button" onClick={() => startMatch(session.options)}>Rematch</button>
-              <button type="button" onClick={() => setScreen("menu")}>Return to menu</button>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelPendingComputerAction();
+                  setScreen("menu");
+                }}
+              >
+                Return to menu
+              </button>
             </div>
           </section>
         </div>

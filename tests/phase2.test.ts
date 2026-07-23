@@ -19,6 +19,10 @@ import {
   selectPiece,
 } from "../apps/web/src/game/controller.ts";
 import { basicComputerPolicy } from "../apps/web/src/game/computer.ts";
+import {
+  ComputerActionGuard,
+  shouldDisableGameInput,
+} from "../apps/web/src/game/input.ts";
 import { createMatch, recordGameResult } from "../apps/web/src/game/match.ts";
 
 const piece = (
@@ -27,6 +31,27 @@ const piece = (
   square: number,
   kind: "man" | "king" = "man",
 ): Piece => ({ id, player, square, kind });
+
+function unfinishedMultiCapture() {
+  const board = createState([
+    piece("p1-a", 1, 41),
+    piece("p1-b", 1, 43),
+    piece("p2-a", 2, 36),
+    piece("p2-b", 2, 26),
+    piece("p2-c", 2, 17),
+    piece("p2-d", 2, 38),
+    piece("p2-safe", 2, 5),
+  ]);
+  const move = getLegalMoves(board, DEFAULT_RULE_CONFIG).find(
+    (candidate) => candidate.pieceId === "p1-a",
+  )!;
+  assert.equal(move.path.length, 3);
+
+  let session = selectPiece(createGameSession({}, board), move.pieceId);
+  session = chooseDestination(session, move.path[0]!);
+  assert.deepEqual(session.pathPrefix, [move.path[0]!]);
+  return { board, move, session };
+}
 
 test("UI interaction submits a canonical engine move", () => {
   let session = createGameSession({}, createInitialState());
@@ -75,6 +100,60 @@ test("multi-capture remains selected and exposes continuation only", () => {
   session = chooseDestination(session, fullMove.path[1]!);
   assert.equal(session.selectedPieceId, undefined);
   assert.equal(session.history[0]?.captures, 2);
+});
+
+test("unfinished multi-capture ignores piece reselection and invalid clicks", () => {
+  const { move, session } = unfinishedMultiCapture();
+
+  assert.strictEqual(selectPiece(session, move.pieceId), session);
+  assert.strictEqual(selectPiece(session, "p1-b"), session);
+  assert.strictEqual(chooseDestination(session, move.from), session);
+  assert.equal(session.selectedPieceId, move.pieceId);
+  assert.deepEqual(session.pathPrefix, [move.path[0]!]);
+  assert.equal(session.history.length, 0);
+});
+
+test("legal multi-capture continuation advances without submitting early", () => {
+  const { board, move, session } = unfinishedMultiCapture();
+  const advanced = chooseDestination(session, move.path[1]!);
+  const view = interactionView(advanced);
+
+  assert.notStrictEqual(advanced, session);
+  assert.strictEqual(advanced.board, board);
+  assert.equal(advanced.selectedPieceId, move.pieceId);
+  assert.deepEqual(advanced.pathPrefix, move.path.slice(0, 2));
+  assert.deepEqual([...view.destinations], [move.path[2]!]);
+  assert.equal(advanced.history.length, 0);
+  assert.equal(advanced.lastMove, undefined);
+});
+
+test("complete multi-capture submits once, removes captures, and clears selection", () => {
+  const { move, session } = unfinishedMultiCapture();
+  const advanced = chooseDestination(session, move.path[1]!);
+  const completed = chooseDestination(advanced, move.path[2]!);
+  const completedAgain = chooseDestination(completed, move.path[2]!);
+  const view = interactionView(completed);
+
+  assert.equal(completed.history.length, 1);
+  assert.deepEqual(completed.lastMove, move);
+  assert.deepEqual(completed.history[0]?.capturedPieceIds, [
+    "p2-a",
+    "p2-b",
+    "p2-c",
+  ]);
+  assert.equal(completed.history[0]?.captures, 3);
+  assert.ok(
+    move.capturedPieceIds.every(
+      (pieceId) =>
+        !completed.board.pieces.some((candidate) => candidate.id === pieceId),
+    ),
+  );
+  assert.equal(completed.selectedPieceId, undefined);
+  assert.deepEqual(completed.pathPrefix, []);
+  assert.equal(view.selectedPieceId, undefined);
+  assert.equal(view.destinations.size, 0);
+  assert.strictEqual(completedAgain, completed);
+  assert.equal(completedAgain.history.length, 1);
 });
 
 test("completed move clears selection highlights and records last move", () => {
@@ -142,4 +221,52 @@ test("temporary computer selects a legal move and prefers most captures", () => 
     ),
   );
   assert.equal(selected.capturedPieceIds.length, maximum);
+});
+
+test("game-changing input disables only when play is not available", () => {
+  assert.equal(
+    shouldDisableGameInput({
+      computerTurn: false,
+      thinking: false,
+      status: "playing",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldDisableGameInput({
+      computerTurn: true,
+      thinking: false,
+      status: "playing",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDisableGameInput({
+      computerTurn: false,
+      thinking: true,
+      status: "playing",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDisableGameInput({
+      computerTurn: false,
+      thinking: false,
+      status: "finished",
+    }),
+    true,
+  );
+});
+
+test("cancelled computer actions cannot apply to a newer game session", () => {
+  const guard = new ComputerActionGuard();
+  const staleAction = guard.start();
+  guard.cancel();
+
+  assert.equal(guard.isCurrent(staleAction), false);
+
+  const currentAction = guard.start();
+  assert.equal(guard.isCurrent(currentAction), true);
+  guard.cancel();
+  assert.equal(guard.isCurrent(currentAction), false);
 });
