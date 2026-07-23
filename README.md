@@ -1,8 +1,8 @@
 # Titan V3
 
 Titan V3 is a competitive Ghana draughts engine and training-platform project.
-Phase 3 adds the first strong, search-based Titan opponent to the fully tested
-Phase 1 rules engine.
+Phase 2 adds a responsive React interface around the fully tested Phase 1 rules
+engine, and Phase 3 adds the first strong, search-based Titan opponent.
 
 ## Current features
 
@@ -10,25 +10,31 @@ Phase 1 rules engine.
 - Compulsory and full multi-captures
 - Backward captures for men and flying kings
 - Promotion and the one-piece-remaining loss rule
+- Human vs Human and Human vs Computer matches
+- Responsive board interaction, match scoring, draws, resignation, and history
 - Iterative-deepening minimax search with alpha-beta pruning
 - Capture quiescence, move ordering, principal variations, and a bounded
   transposition table
 - Easy, Medium, Hard, Master, and Titan difficulty profiles
-- 46 automated tests: 27 engine/regression tests and 19 AI tests
+- Automated engine, UI-controller, and AI regression coverage
 
-The AI never generates or applies rules itself. Every selected move comes from
-`getLegalMoves`, and every search transition uses `applyMove`.
+The UI and AI never calculate or bypass move legality. Every selected move comes
+from `getLegalMoves`, every completed move is checked by `validateMove`, and
+every state transition uses `applyMove`.
 
 ## Requirements
 
 - Node.js 24 or newer
 - npm 10 or newer
 
-## Install
+## Install and run
 
 ```sh
 npm install
+npm run dev
 ```
+
+Open the local URL printed by Vite.
 
 ## Use the AI
 
@@ -53,6 +59,7 @@ rules, evaluator, clock, and deterministic random source can be overridden.
 ```sh
 npm test
 npm run test:engine
+npm run test:phase2
 npm run test:ai
 npm run typecheck
 ```
@@ -66,13 +73,23 @@ npm run benchmark:ai
 The benchmark reports each difficulty's selected move, completed depth, nodes,
 elapsed time, nodes per second, score, and principal variation.
 
+## Production build
+
+```sh
+npm run build
+```
+
+The production site is written to `dist/`.
+
 ## Project layout
 
 ```text
+apps/web/                   React + TypeScript + Vite interface
 packages/game-engine/       Framework-independent Ghana draughts rules
 packages/titan-ai/          Search, evaluation, difficulty, and diagnostics
 scripts/benchmark-ai.ts     Repeatable command-line benchmark
-tests/                      Engine regression and tactical AI tests
+tests/                      Engine, UI-controller, and tactical AI tests
+docs/architecture/          Phase 2 architectural decisions
 docs/ai/PHASE_3_AI.md       Phase 3 architecture and limitations
 ```
 
