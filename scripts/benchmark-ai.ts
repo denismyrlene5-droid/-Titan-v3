@@ -58,4 +58,3 @@ for (const difficulty of DIFFICULTIES) {
   console.log(`  timed out: ${result.timedOut}`);
   console.log("");
 }
-

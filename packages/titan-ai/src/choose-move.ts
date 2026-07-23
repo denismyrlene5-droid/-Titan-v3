@@ -52,4 +52,3 @@ export function chooseMove(
     principalVariation: [selected],
   };
 }
-

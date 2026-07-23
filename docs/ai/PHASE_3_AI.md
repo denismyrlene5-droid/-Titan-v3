@@ -143,4 +143,3 @@ Dataset collection and trained evaluation are deferred to Phase 4 by the Phase
 3 brief. A future model can implement `PositionEvaluator` and replace or blend
 with the handcrafted score without changing legal move generation, search
 state transitions, or the UI. Phase 3 adds no machine-learning dependencies.
-

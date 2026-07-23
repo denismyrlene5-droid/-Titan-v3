@@ -77,4 +77,3 @@ export function orderMoves(
     .sort((left, right) => right.score - left.score || left.index - right.index)
     .map(({ move }) => move);
 }
-
