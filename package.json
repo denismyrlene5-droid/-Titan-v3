@@ -1,0 +1,12 @@
+{
+  "name": "titan-v3",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/rules.test.ts tests/regression.test.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
