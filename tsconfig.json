@@ -7,10 +7,8 @@
     "noEmit": true,
     "strict": true,
     "exactOptionalPropertyTypes": true,
-    "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
   "include": ["packages/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
 }
-
