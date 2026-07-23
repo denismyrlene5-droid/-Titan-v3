@@ -60,4 +60,3 @@ export interface SearchResult {
   principalVariation: readonly Move[];
   timedOut: boolean;
 }
-
