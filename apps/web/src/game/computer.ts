@@ -17,7 +17,7 @@ function material(state: BoardState, player: 1 | 2): number {
 }
 
 export const basicComputerPolicy: ComputerPolicy = Object.freeze({
-  chooseMove(state) {
+  chooseMove(state: BoardState) {
     const moves = getLegalMoves(state, DEFAULT_RULE_CONFIG);
     if (moves.length === 0) return undefined;
     const maximumCaptures = Math.max(
@@ -27,7 +27,7 @@ export const basicComputerPolicy: ComputerPolicy = Object.freeze({
       (move) => move.capturedPieceIds.length === maximumCaptures,
     );
   },
-  acceptDraw(state) {
+  acceptDraw(state: BoardState) {
     return Math.abs(material(state, 1) - material(state, 2)) <= 1;
   },
 });
