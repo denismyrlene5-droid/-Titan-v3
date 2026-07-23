@@ -4,7 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/rules.test.ts tests/regression.test.ts"
+    "test": "node --test tests/*.test.ts",
+    "test:engine": "node --test tests/rules.test.ts tests/regression.test.ts",
+    "test:ai": "node --test tests/ai.test.ts",
+    "benchmark:ai": "node scripts/benchmark-ai.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3"
   },
   "engines": {
     "node": ">=24"

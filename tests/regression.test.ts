@@ -21,7 +21,9 @@ import type {
 
 function sq(row: number, column: number): number {
   const square = coordinateToSquare(row, column);
-  assert.notEqual(square, null);
+  if (square === null) {
+    throw new Error(`(${row}, ${column}) must be playable`);
+  }
   return square;
 }
 
@@ -84,7 +86,7 @@ test("regression: a partial multi-capture is never a legal move", () => {
   };
 
   assert.equal(validateMove(state, partial, config()).valid, false);
-  assert.equal(getLegalMoves(state, config())[0].capturedPieceIds.length, 2);
+  assert.equal(getLegalMoves(state, config())[0]!.capturedPieceIds.length, 2);
 });
 
 test("regression: final winning capture applies without freeze and ends the game", () => {
@@ -173,6 +175,7 @@ test("regression: exact path validation prevents a highlighted destination misma
     1,
   );
   const canonical = getLegalMoves(state, config())[0];
+  if (!canonical) throw new Error("Expected a canonical king move.");
   const wrongDestination: Move = {
     ...canonical,
     path: [sq(6, 1)],
@@ -204,7 +207,7 @@ test("regression: immediate crown promotion unlocks king continuation", () => {
     config({ promotionTiming: "end_of_turn" }),
   );
   assert.equal(delayed.length, 1);
-  assert.equal(delayed[0].capturedPieceIds.length, 1);
+  assert.equal(delayed[0]!.capturedPieceIds.length, 1);
 });
 
 test("regression: after a completed capture the turn changes and no forced prompt remains", () => {
@@ -219,6 +222,7 @@ test("regression: after a completed capture the turn changes and no forced promp
     { forcedPieceId: "man" },
   );
   const move = getLegalMoves(state, config())[0];
+  if (!move) throw new Error("Expected a forced capture.");
   const next = applyMove(state, move, config());
 
   assert.equal(next.sideToMove, 2);
