@@ -98,6 +98,44 @@ test("flying kings move any unobstructed distance in all four diagonals", () => 
   assert.ok(destinations.includes(sq(9, 8)));
 });
 
+test("short-range kings move one square in all four diagonals", () => {
+  const state = createState([piece("king", 1, "king", 5, 4)], 1);
+  const destinations = getLegalMoves(
+    state,
+    config({ flyingKings: false }),
+  ).map((move) => move.path[0]);
+
+  assert.deepEqual(
+    destinations.sort((a, b) => (a ?? 0) - (b ?? 0)),
+    [sq(4, 3), sq(4, 5), sq(6, 3), sq(6, 5)].sort((a, b) => a - b),
+  );
+});
+
+test("short-range kings capture in every diagonal direction", () => {
+  const state = createState(
+    [
+      piece("king", 1, "king", 3, 2),
+      piece("backward-victim", 2, "man", 4, 3),
+    ],
+    1,
+  );
+  const moves = generateCaptures(
+    state,
+    "king",
+    config({ flyingKings: false, menCaptureBackward: false }),
+  );
+
+  assert.deepEqual(moves, [
+    {
+      pieceId: "king",
+      from: sq(3, 2),
+      path: [sq(5, 4)],
+      capturedPieceIds: ["backward-victim"],
+      promotes: false,
+    },
+  ]);
+});
+
 test("compulsory capture suppresses every quiet move", () => {
   const state = createState(
     [
@@ -222,6 +260,58 @@ test("maximum-capture priority is centralized and configurable", () => {
   assert.equal(maximumOnly.length, 1);
   assert.equal(maximumOnly[0].pieceId, "long");
   assert.equal(maximumOnly[0].capturedPieceIds.length, 2);
+});
+
+test("a forced continuation can never degrade into a quiet move", () => {
+  const state = createState(
+    [
+      piece("forced", 1, "man", 5, 4),
+      piece("other", 1, "man", 7, 0),
+      piece("opponent", 2, "man", 1, 0),
+    ],
+    1,
+    { forcedPieceId: "forced" },
+  );
+
+  assert.deepEqual(getLegalMoves(state, config()), []);
+  assert.deepEqual(
+    getLegalMoves(state, config({ mandatoryCapture: false })),
+    [],
+  );
+});
+
+test("position hashes describe rules-relevant geometry rather than piece ids", () => {
+  const first = createState(
+    [
+      piece("first-a", 1, "king", 5, 4),
+      piece("first-b", 2, "man", 4, 3),
+    ],
+    1,
+  );
+  const renamed = createState(
+    [
+      piece("renamed-a", 1, "king", 5, 4),
+      piece("renamed-b", 2, "man", 4, 3),
+    ],
+    1,
+  );
+  const forcedFirst = createState(first.pieces, 1, {
+    forcedPieceId: "first-a",
+  });
+  const forcedRenamed = createState(renamed.pieces, 1, {
+    forcedPieceId: "renamed-a",
+  });
+
+  assert.equal(first.positionHash, renamed.positionHash);
+  assert.equal(forcedFirst.positionHash, forcedRenamed.positionHash);
+  assert.notEqual(first.positionHash, forcedFirst.positionHash);
+  assert.throws(
+    () =>
+      createState(first.pieces, 1, {
+        forcedPieceId: "first-b",
+      }),
+    /forced piece/i,
+  );
 });
 
 test("a quiet move promotes a man on the opponent crown row", () => {

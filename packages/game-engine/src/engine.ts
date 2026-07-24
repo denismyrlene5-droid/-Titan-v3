@@ -131,13 +131,43 @@ function kingCaptureSteps(
   return steps;
 }
 
+function shortKingCaptureSteps(
+  piece: Piece,
+  board: PieceMap,
+): Array<{ landing: number; captured: Piece }> {
+  const { row, column } = squareToCoordinate(piece.square);
+  const steps: Array<{ landing: number; captured: Piece }> = [];
+
+  for (const [rowDirection, columnDirection] of DIAGONALS) {
+    const jumpedSquare = coordinateToSquare(
+      row + rowDirection,
+      column + columnDirection,
+    );
+    const landing = coordinateToSquare(
+      row + rowDirection * 2,
+      column + columnDirection * 2,
+    );
+    if (jumpedSquare === null || landing === null || board.has(landing)) {
+      continue;
+    }
+    const captured = board.get(jumpedSquare);
+    if (captured && captured.player !== piece.player) {
+      steps.push({ landing, captured });
+    }
+  }
+
+  return steps;
+}
+
 function captureSteps(
   piece: Piece,
   board: PieceMap,
   config: RuleConfig,
 ): Array<{ landing: number; captured: Piece }> {
-  if (piece.kind === "king" && config.flyingKings) {
-    return kingCaptureSteps(piece, board);
+  if (piece.kind === "king") {
+    return config.flyingKings
+      ? kingCaptureSteps(piece, board)
+      : shortKingCaptureSteps(piece, board);
   }
   return manCaptureSteps(piece, board, config);
 }
@@ -247,8 +277,14 @@ function generateQuietMoves(
     return moves;
   }
 
-  const rowDirection = forwardDirection(piece.player);
-  for (const columnDirection of [-1, 1]) {
+  const directions =
+    piece.kind === "king"
+      ? DIAGONALS
+      : ([-1, 1] as const).map(
+          (columnDirection) =>
+            [forwardDirection(piece.player), columnDirection] as const,
+        );
+  for (const [rowDirection, columnDirection] of directions) {
     const destination = coordinateToSquare(
       row + rowDirection,
       column + columnDirection,
@@ -290,6 +326,7 @@ export function getLegalMoves(
     );
   }
 
+  if (state.forcedPieceId !== undefined) return captures;
   if (captures.length > 0 && config.mandatoryCapture) return captures;
 
   const quietMoves = candidates.flatMap((piece) =>
