@@ -20,6 +20,7 @@ import type {
 } from "../packages/game-engine/src/index.ts";
 import {
   DIFFICULTY_CONFIGS,
+  DEFAULT_EVALUATION_WEIGHTS,
   LOSS_SCORE,
   TranspositionTable,
   WIN_SCORE,
@@ -185,6 +186,52 @@ test("AI avoids an immediate loss when a safe move exists", () => {
   assert.deepEqual(result.move.path, [29]);
 });
 
+test("AI delays a forced loss when every move eventually loses", () => {
+  const state = createState(
+    [
+      { id: "g1", player: 1, kind: "man", square: 21 },
+      { id: "g2", player: 1, kind: "man", square: 34 },
+      { id: "o1", player: 2, kind: "man", square: 1 },
+      { id: "o2", player: 2, kind: "man", square: 24 },
+    ],
+    1,
+  );
+  const legalMoves = getLegalMoves(state, DEFAULT_RULE_CONFIG);
+  const result = chooseMove(state, "hard", {
+    maxDepth: 7,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+    useQuiescence: false,
+    useTranspositionTable: false,
+  });
+  const alternatives = legalMoves.map((move) => {
+    const reply = chooseMove(
+      applyMove(state, move, DEFAULT_RULE_CONFIG),
+      "hard",
+      {
+        maxDepth: 6,
+        timeLimitMs: 5_000,
+        randomMoveChance: 0,
+        useQuiescence: false,
+        useTranspositionTable: false,
+      },
+    );
+    return { move, rootScore: -reply.score };
+  });
+  const quickestLoss = alternatives.find(
+    ({ move }) => move.pieceId === "g2",
+  )!;
+  const selected = alternatives.find(({ move }) =>
+    movesEqual(move, result.move),
+  )!;
+
+  assert.ok(
+    alternatives.every(({ rootScore }) => rootScore <= LOSS_SCORE + 20),
+  );
+  assert.equal(result.move?.pieceId, "g1");
+  assert.ok(selected.rootScore > quickestLoss.rootScore);
+});
+
 test("AI prefers a larger capture sequence without a forced terminal win", () => {
   const state = createState(
     [
@@ -301,6 +348,7 @@ test("transposition-table entries are reused across searches", () => {
   assert.ok(table.hits > hitsAfterFirst);
   assert.ok(second.nodes < first.nodes);
   assert.ok(movesEqual(first.move, second.move));
+  assert.equal(first.score, second.score);
 });
 
 test("terminal positions return no move", () => {
@@ -533,6 +581,58 @@ test("transposition entries keep bounds and search contexts separate", () => {
     "upper",
   );
   assert.equal(table.peek("same-position", 1, "missing"), undefined);
+});
+
+test("search contexts isolate incompatible rules and evaluation weights", () => {
+  const base = resolveAIConfig("hard");
+  const differentRules = resolveAIConfig("hard", {
+    rules: rules({
+      requireMaximumCapture: true,
+      promotionTiming: "end_of_turn",
+    }),
+  });
+  const differentWeights = resolveAIConfig("hard", {
+    evaluationWeights: {
+      ...DEFAULT_EVALUATION_WEIGHTS,
+      king: DEFAULT_EVALUATION_WEIGHTS.king + 1,
+    },
+  });
+  const table = new TranspositionTable(20);
+  table.beginSearch();
+  table.store({
+    hash: "configuration-sensitive-position",
+    perspective: 1,
+    contextKey: base.transpositionContextKey,
+    depth: 3,
+    score: 123,
+    bound: "exact",
+    bestMove: null,
+  });
+
+  assert.notEqual(
+    base.transpositionContextKey,
+    differentRules.transpositionContextKey,
+  );
+  assert.notEqual(
+    base.transpositionContextKey,
+    differentWeights.transpositionContextKey,
+  );
+  assert.equal(
+    table.peek(
+      "configuration-sensitive-position",
+      1,
+      differentRules.transpositionContextKey,
+    ),
+    undefined,
+  );
+  assert.equal(
+    table.peek(
+      "configuration-sensitive-position",
+      1,
+      differentWeights.transpositionContextKey,
+    ),
+    undefined,
+  );
 });
 
 test("custom evaluators require an explicit stable key for table reuse", () => {
