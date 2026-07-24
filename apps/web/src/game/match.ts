@@ -1,3 +1,4 @@
+import { opponent } from "../../../../packages/game-engine/src/index.ts";
 import type { GameResult, MatchState } from "./types.ts";
 
 export function createMatch(target = 3): MatchState {
@@ -7,6 +8,7 @@ export function createMatch(target = 3): MatchState {
     player2Score: 0,
     draws: 0,
     round: 1,
+    roundStarter: 1,
   });
 }
 
@@ -29,6 +31,7 @@ export function recordGameResult(
     player2Score,
     draws: match.draws + (result.winner ? 0 : 1),
     round: match.round + 1,
+    roundStarter: opponent(match.roundStarter),
     winner,
   });
 }

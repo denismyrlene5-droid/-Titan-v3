@@ -204,12 +204,29 @@ test("draw offer can be rejected or accepted", () => {
 
 test("match scoring counts wins and draws and finds a target winner", () => {
   let match = createMatch(2);
+  assert.equal(match.roundStarter, 1);
   match = recordGameResult(match, { winner: 1, reason: "resignation" });
+  assert.equal(match.roundStarter, 2);
   match = recordGameResult(match, { reason: "draw_agreement" });
+  assert.equal(match.roundStarter, 1);
   match = recordGameResult(match, { winner: 1, reason: "no_legal_moves" });
   assert.equal(match.player1Score, 2);
   assert.equal(match.draws, 1);
   assert.equal(match.winner, 1);
+  assert.equal(match.roundStarter, 2);
+});
+
+test("successive match rounds alternate the side to move", () => {
+  const initial = createInitialState();
+  let match = createMatch(5);
+
+  for (const expectedStarter of [1, 2, 1, 2] as const) {
+    const roundBoard = createState(initial.pieces, match.roundStarter);
+    const roundSession = createGameSession({}, roundBoard);
+    assert.equal(roundSession.board.sideToMove, expectedStarter);
+    assert.equal(roundSession.initialState.sideToMove, expectedStarter);
+    match = recordGameResult(match, { reason: "draw_agreement" });
+  }
 });
 
 test("Titan moves first when the human chooses Player 2", () => {

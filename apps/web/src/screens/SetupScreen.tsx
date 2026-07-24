@@ -29,7 +29,11 @@ export function SetupScreen({
         <button className="back-button" type="button" onClick={onBack}>← Menu</button>
         <span className="eyebrow">Match desk</span>
         <h1>Set the board</h1>
-        <p>Choose your side and match format. Rules stay exactly the same.</p>
+        <p>
+          {options.opponentType === "computer"
+            ? "Choose your side and match format. Rules stay exactly the same."
+            : "Choose player names and match format. Rules stay exactly the same."}
+        </p>
         <div className="setup-form">
           <label>
             <span>Your name</span>
@@ -65,21 +69,23 @@ export function SetupScreen({
               onChange={(event) => update("opponentName", event.target.value)}
             />
           </label>
-          <fieldset>
-            <legend>Your side</legend>
-            <div className="segmented">
-              <button
-                className={options.humanSide === 1 ? "chosen" : ""}
-                type="button"
-                onClick={() => update("humanSide", 1)}
-              >Gold · first</button>
-              <button
-                className={options.humanSide === 2 ? "chosen" : ""}
-                type="button"
-                onClick={() => update("humanSide", 2)}
-              >Onyx · second</button>
-            </div>
-          </fieldset>
+          {options.opponentType === "computer" && (
+            <fieldset>
+              <legend>Your side</legend>
+              <div className="segmented">
+                <button
+                  className={options.humanSide === 1 ? "chosen" : ""}
+                  type="button"
+                  onClick={() => update("humanSide", 1)}
+                >Gold · first</button>
+                <button
+                  className={options.humanSide === 2 ? "chosen" : ""}
+                  type="button"
+                  onClick={() => update("humanSide", 2)}
+                >Onyx · second</button>
+              </div>
+            </fieldset>
+          )}
           <label>
             <span>Gold piece style</span>
             <select
