@@ -1,0 +1,133 @@
+import { DEFAULT_RULE_CONFIG } from "../../game-engine/src/index.ts";
+import {
+  DEFAULT_EVALUATION_WEIGHTS,
+  createHandcraftedEvaluator,
+} from "./evaluate.ts";
+import type {
+  AIConfig,
+  Difficulty,
+  EvaluationWeights,
+  PositionEvaluator,
+} from "./types.ts";
+
+const evaluatorIds = new WeakMap<PositionEvaluator, number>();
+let nextEvaluatorId = 1;
+
+function evaluatorId(evaluator: PositionEvaluator): number {
+  const existing = evaluatorIds.get(evaluator);
+  if (existing !== undefined) return existing;
+  const assigned = nextEvaluatorId;
+  nextEvaluatorId += 1;
+  evaluatorIds.set(evaluator, assigned);
+  return assigned;
+}
+
+function evaluationKey(weights: EvaluationWeights): string {
+  return Object.keys(DEFAULT_EVALUATION_WEIGHTS)
+    .map((key) => weights[key as keyof EvaluationWeights])
+    .join(",");
+}
+
+function contextKey(
+  config: Omit<AIConfig, "transpositionContextKey">,
+  customEvaluator: boolean,
+): string {
+  const rules = config.rules;
+  const rulesKey = [
+    rules.boardSize,
+    rules.piecesPerSide,
+    rules.mandatoryCapture,
+    rules.menCaptureBackward,
+    rules.flyingKings,
+    rules.requireMaximumCapture,
+    rules.promotionTiming,
+    rules.onePieceRemainingMeansLoss,
+  ].join(",");
+  const evaluatorKey = customEvaluator
+    ? `custom:${evaluatorId(config.evaluator)}`
+    : `handcrafted:${evaluationKey(config.evaluationWeights)}`;
+  return [
+    rulesKey,
+    evaluatorKey,
+    config.useQuiescence,
+    config.maxQuiescenceDepth,
+  ].join("|");
+}
+
+export type DifficultyConfig = Pick<
+  AIConfig,
+  | "maxDepth"
+  | "timeLimitMs"
+  | "randomMoveChance"
+  | "useQuiescence"
+  | "useTranspositionTable"
+>;
+
+export const DIFFICULTY_CONFIGS: Readonly<
+  Record<Difficulty, Readonly<DifficultyConfig>>
+> = Object.freeze({
+  easy: Object.freeze({
+    maxDepth: 1,
+    timeLimitMs: 100,
+    randomMoveChance: 0.45,
+    useQuiescence: false,
+    useTranspositionTable: false,
+  }),
+  medium: Object.freeze({
+    maxDepth: 3,
+    timeLimitMs: 500,
+    randomMoveChance: 0.15,
+    useQuiescence: false,
+    useTranspositionTable: true,
+  }),
+  hard: Object.freeze({
+    maxDepth: 5,
+    timeLimitMs: 1_500,
+    randomMoveChance: 0,
+    useQuiescence: true,
+    useTranspositionTable: true,
+  }),
+  master: Object.freeze({
+    maxDepth: 7,
+    timeLimitMs: 3_500,
+    randomMoveChance: 0,
+    useQuiescence: true,
+    useTranspositionTable: true,
+  }),
+  titan: Object.freeze({
+    maxDepth: 10,
+    timeLimitMs: 7_000,
+    randomMoveChance: 0,
+    useQuiescence: true,
+    useTranspositionTable: true,
+  }),
+});
+
+export function resolveAIConfig(
+  difficulty: Difficulty,
+  overrides: Partial<AIConfig> = {},
+): AIConfig {
+  const level = DIFFICULTY_CONFIGS[difficulty];
+  const evaluationWeights =
+    overrides.evaluationWeights ?? DEFAULT_EVALUATION_WEIGHTS;
+  const evaluator =
+    overrides.evaluator ?? createHandcraftedEvaluator(evaluationWeights);
+
+  const resolved = {
+    ...level,
+    maxQuiescenceDepth: 8,
+    transpositionTableMaxSize: 100_000,
+    rules: DEFAULT_RULE_CONFIG,
+    random: Math.random,
+    now: Date.now,
+    ...overrides,
+    evaluationWeights,
+    evaluator,
+  };
+  return {
+    ...resolved,
+    transpositionContextKey:
+      overrides.transpositionContextKey ??
+      contextKey(resolved, overrides.evaluator !== undefined),
+  };
+}
