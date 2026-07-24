@@ -16,6 +16,7 @@ engine, and Phase 3 adds the first strong, search-based Titan opponent.
 - Capture quiescence, move ordering, principal variations, and a bounded
   transposition table
 - Easy, Medium, Hard, Master, and Titan difficulty profiles
+- Non-blocking browser search in a cancellable Web Worker
 - Automated engine, UI-controller, and AI regression coverage
 
 The UI and AI never calculate or bypass move legality. Every selected move comes
@@ -70,8 +71,10 @@ npm run typecheck
 npm run benchmark:ai
 ```
 
-The benchmark reports each difficulty's selected move, completed depth, nodes,
-elapsed time, nodes per second, score, and principal variation.
+The benchmark runs deterministic Hard search over seven representative
+positions. It reports the selected move, score, completed depth, nodes, elapsed
+time, nodes per second, transposition-table hits, cutoffs, principal variation,
+and timeout status.
 
 ## Production build
 
@@ -95,10 +98,11 @@ docs/ai/PHASE_3_AI.md       Phase 3 architecture and limitations
 
 ## Current limitations
 
-Phase 3 search is synchronous and should be moved to a Web Worker before UI
-integration. It has no opening book, tablebase, repetition adjudication, or
-trained evaluator. Titan is a strong first search version, not a claim of
-complete or unbeatable play.
+The framework-independent `chooseMove` API is synchronous, while the React app
+runs it in a cancellable Web Worker so search does not block interaction.
+Phase 3 has no opening book, tablebase, repetition adjudication, or trained
+evaluator. Titan is a strong first search version, not a claim of complete or
+unbeatable play.
 
 Dataset collection and trained evaluation are deferred to Phase 4. The
 `PositionEvaluator` interface allows a future model to replace or supplement

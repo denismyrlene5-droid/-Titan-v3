@@ -1,8 +1,10 @@
 # Phase 3 search AI
 
-Phase 3 introduces Titan's first serious search opponent. It is a synchronous,
-framework-independent TypeScript package under `packages/titan-ai`. The package
-does not contain Ghana draughts move generation or state-transition rules.
+Phase 3 introduces Titan's first serious search opponent. Its public
+`chooseMove` call is a synchronous, framework-independent TypeScript API under
+`packages/titan-ai`. The React app calls it from a cancellable module Web
+Worker, keeping the main browser thread responsive. The package does not
+contain Ghana draughts move generation or state-transition rules.
 
 ## Correctness boundary
 
@@ -37,8 +39,8 @@ The search includes:
 - an always-legal root fallback if the first iteration cannot finish.
 
 Search diagnostics are returned in `SearchResult`: chosen move, score, completed
-depth, node count, elapsed milliseconds, principal variation, and timeout
-status.
+depth, node count, elapsed milliseconds, transposition-table hits, alpha-beta
+cutoffs, principal variation, and timeout status.
 
 ## Difficulty settings
 
@@ -88,15 +90,19 @@ Phase 3 ships only the handcrafted implementation.
 
 ## Transposition table
 
-`TranspositionTable` keys entries with the engine's `positionHash` plus the
-root perspective. Each entry records depth, score, exact/lower/upper bound,
-best move, and search generation.
+`TranspositionTable` keys entries with the engine's `positionHash`, root
+perspective, and a search-context key derived from rules, evaluation, and
+quiescence settings. Each entry records depth, score, exact/lower/upper bound,
+best move, and search generation. A probed best move is matched against the
+current engine-generated legal list before its score or ordering hint is used.
 
 The default capacity is 100,000 entries. On reaching the configured limit, the
 table removes the oldest and shallowest records until it is at 75% capacity.
-A caller may reuse one table across `chooseMove` calls. Reuse should keep the
-same rules and evaluator settings because cached scores belong to that search
-configuration.
+A caller may reuse one table across `chooseMove` calls. Entries from different
+rules, evaluator instances or weights, and quiescence settings are isolated
+automatically. A caller supplying an explicit `transpositionContextKey` is
+responsible for changing it whenever other score-affecting configuration
+changes.
 
 ## Timeout behaviour
 
@@ -117,15 +123,18 @@ npm run typecheck
 npm run benchmark:ai
 ```
 
-The benchmark searches the initial position at every difficulty and prints the
-move, completed depth, nodes, elapsed time, nodes per second, evaluation, and
-principal variation. Its shorter benchmark time budgets are deliberately
-different from gameplay defaults.
+The benchmark runs a deterministic Hard search over an opening, compulsory
+capture, branching multi-capture, king-heavy position, promotion race, tactical
+trap, and endgame. It prints the move, score, completed depth, nodes, elapsed
+time, nodes per second, transposition-table hits, cutoffs, principal variation,
+and timeout status. Its 250 ms per-position budget is deliberately shorter than
+the gameplay default.
 
 ## Known limitations
 
-- Search currently runs synchronously; the browser integration should put it in
-  a Web Worker.
+- `chooseMove` is synchronous for portable callers; browser cancellation is
+  implemented by terminating its dedicated Web Worker rather than interrupting
+  the search function from inside.
 - The evaluator is handcrafted and not yet tuned from Ghana draughts games.
 - The engine does not yet expose repetition or no-progress draw adjudication.
 - There is no opening book, endgame tablebase, aspiration window, killer

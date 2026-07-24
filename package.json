@@ -11,7 +11,7 @@
     "test:phase2": "node --test tests/phase2.test.ts",
     "test:ai": "node --test tests/ai.test.ts",
     "benchmark:ai": "node scripts/benchmark-ai.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p apps/web/tsconfig.json --noEmit"
   },
   "dependencies": {
     "react": "^19.1.0",

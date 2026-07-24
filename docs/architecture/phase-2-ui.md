@@ -20,12 +20,19 @@ until a complete path is selected. The final move is passed through
 This gives players step-by-step capture guidance while keeping continuation,
 branching, promotion, and flying-king decisions in the rules engine.
 
-## Temporary computer
+## Phase 3 computer integration
 
-`computer.ts` is a replaceable Phase 2 policy. It selects only from
-`getLegalMoves`, preferring the greatest number of captured pieces. Its draw
-policy is isolated beside its move policy. It contains no search, evaluation,
-or Phase 3 AI behavior.
+`computer.ts` is the UI boundary for Titan search requests and responses. The
+browser passes the current immutable `BoardState` and selected difficulty to a
+module Web Worker, which calls the public Phase 3 `chooseMove` API. Returned
+moves are applied through the Phase 2 controller and therefore through Phase 1
+validation and state transitions.
+
+Each request carries a generation and official position hash. Restart, rematch,
+new-game, and menu actions terminate the worker and invalidate that generation.
+The response is checked again inside the React state update, so a delayed
+result cannot be applied to a newer session even when the newer board happens
+to have the same initial position hash.
 
 ## Rendering
 
