@@ -9,6 +9,11 @@ import type {
   RuleConfig,
 } from "../../game-engine/src/index.ts";
 
+export interface OrderedMove {
+  readonly move: Move;
+  readonly childState: BoardState;
+}
+
 export function movesEqual(left: Move | null, right: Move | null): boolean {
   if (left === null || right === null) return left === right;
   return (
@@ -42,14 +47,15 @@ function advancementScore(state: BoardState, move: Move): number {
 function orderingScore(
   state: BoardState,
   move: Move,
+  childState: BoardState,
   rules: RuleConfig,
   transpositionBest: Move | null,
 ): number {
   const movingPiece = state.pieces.find(
     (candidate) => candidate.id === move.pieceId,
   );
-  const next = applyMove(state, move, rules);
-  const immediateWin = isTerminal(next, rules)?.winner === state.sideToMove;
+  const immediateWin =
+    isTerminal(childState, rules)?.winner === state.sideToMove;
 
   return (
     (movesEqual(move, transpositionBest) ? 10_000_000_000 : 0) +
@@ -62,18 +68,46 @@ function orderingScore(
   );
 }
 
+export function orderMovesWithChildren(
+  state: BoardState,
+  moves: readonly Move[],
+  rules: RuleConfig,
+  transpositionBest: Move | null = null,
+  checkDeadline: () => void = () => {},
+): OrderedMove[] {
+  return moves
+    .map((move, index) => {
+      checkDeadline();
+      const childState = applyMove(state, move, rules);
+      return {
+        move,
+        childState,
+        index,
+        score: orderingScore(
+          state,
+          move,
+          childState,
+          rules,
+          transpositionBest,
+        ),
+      };
+    })
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(({ move, childState }) => ({ move, childState }));
+}
+
 export function orderMoves(
   state: BoardState,
   moves: readonly Move[],
   rules: RuleConfig,
   transpositionBest: Move | null = null,
+  checkDeadline: () => void = () => {},
 ): Move[] {
-  return moves
-    .map((move, index) => ({
-      move,
-      index,
-      score: orderingScore(state, move, rules, transpositionBest),
-    }))
-    .sort((left, right) => right.score - left.score || left.index - right.index)
-    .map(({ move }) => move);
+  return orderMovesWithChildren(
+    state,
+    moves,
+    rules,
+    transpositionBest,
+    checkDeadline,
+  ).map(({ move }) => move);
 }

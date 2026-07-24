@@ -10,7 +10,10 @@ import type {
   TerminalResult,
 } from "../../game-engine/src/index.ts";
 import { LOSS_SCORE, WIN_SCORE } from "./evaluate.ts";
-import { movesEqual, orderMoves } from "./move-ordering.ts";
+import {
+  movesEqual,
+  orderMovesWithChildren,
+} from "./move-ordering.ts";
 import { TranspositionTable } from "./transposition-table.ts";
 import type {
   AIConfig,
@@ -20,6 +23,7 @@ import type {
 const NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY;
 const POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
 const SEARCH_TIMEOUT = Symbol("search-timeout");
+export const MATE_SCORE_THRESHOLD = WIN_SCORE - 10_000;
 
 interface SearchContext {
   readonly rootPlayer: Player;
@@ -52,6 +56,18 @@ function terminalScore(
   return terminal.winner === perspective
     ? WIN_SCORE - ply
     : LOSS_SCORE + ply;
+}
+
+export function scoreToTransposition(score: number, ply: number): number {
+  if (score >= MATE_SCORE_THRESHOLD) return score + ply;
+  if (score <= -MATE_SCORE_THRESHOLD) return score - ply;
+  return score;
+}
+
+export function scoreFromTransposition(score: number, ply: number): number {
+  if (score >= MATE_SCORE_THRESHOLD) return score - ply;
+  if (score <= -MATE_SCORE_THRESHOLD) return score + ply;
+  return score;
 }
 
 function evaluateLeaf(state: BoardState, context: SearchContext): number {
@@ -89,9 +105,16 @@ function evaluateQuiescenceLimit(
   const maximizing = state.sideToMove === context.rootPlayer;
   let bestScore = maximizing ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
   let bestLine: readonly Move[] = [];
-  for (const move of orderMoves(state, captures, context.config.rules)) {
+  const ordered = orderMovesWithChildren(
+    state,
+    captures,
+    context.config.rules,
+    null,
+    () => checkTimeout(context),
+  );
+  for (const { move, childState } of ordered) {
     const child = evaluateQuiescenceLimit(
-      applyMove(state, move, context.config.rules),
+      childState,
       alpha,
       beta,
       ply + 1,
@@ -125,9 +148,10 @@ function quiescence(
   ply: number,
   quiescenceDepth: number,
   context: SearchContext,
+  countCurrentNode = true,
 ): NodeResult {
   checkTimeout(context);
-  context.nodes += 1;
+  if (countCurrentNode) context.nodes += 1;
 
   const terminal = isTerminal(state, context.config.rules);
   if (terminal) {
@@ -148,11 +172,15 @@ function quiescence(
   const maximizing = state.sideToMove === context.rootPlayer;
   let bestScore = maximizing ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
   let bestLine: readonly Move[] = [];
-  const ordered = orderMoves(state, captures, context.config.rules);
+  const ordered = orderMovesWithChildren(
+    state,
+    captures,
+    context.config.rules,
+    null,
+    () => checkTimeout(context),
+  );
 
-  for (const move of ordered) {
-    checkTimeout(context);
-    const childState = applyMove(state, move, context.config.rules);
+  for (const { move, childState } of ordered) {
     const child =
       quiescenceDepth >= context.config.maxQuiescenceDepth
         ? evaluateQuiescenceLimit(
@@ -212,7 +240,7 @@ function alphaBeta(
   }
   if (depth === 0) {
     if (context.config.useQuiescence) {
-      return quiescence(state, alpha, beta, ply, 0, context);
+      return quiescence(state, alpha, beta, ply, 0, context, false);
     }
     return { score: evaluateLeaf(state, context), principalVariation: [] };
   }
@@ -229,45 +257,53 @@ function alphaBeta(
       : (legalMoves.find((move) => movesEqual(move, cached.bestMove)) ?? null);
   const usableCached =
     cached && cachedBestMove === null ? undefined : cached;
+  const cachedScore =
+    usableCached === undefined
+      ? undefined
+      : scoreFromTransposition(usableCached.score, ply);
   const alphaOriginal = alpha;
   const betaOriginal = beta;
-  if (usableCached && usableCached.depth >= depth) {
+  if (
+    usableCached &&
+    cachedScore !== undefined &&
+    usableCached.depth >= depth
+  ) {
     if (usableCached.bound === "exact") {
       return {
-        score: usableCached.score,
+        score: cachedScore,
         principalVariation: cachedBestMove ? [cachedBestMove] : [],
       };
     }
     if (usableCached.bound === "lower") {
-      alpha = Math.max(alpha, usableCached.score);
+      alpha = Math.max(alpha, cachedScore);
     }
     if (usableCached.bound === "upper") {
-      beta = Math.min(beta, usableCached.score);
+      beta = Math.min(beta, cachedScore);
     }
     if (alpha >= beta) {
       context.cutoffs += 1;
       return {
-        score: usableCached.score,
+        score: cachedScore,
         principalVariation: cachedBestMove ? [cachedBestMove] : [],
       };
     }
   }
 
-  const ordered = orderMoves(
+  const ordered = orderMovesWithChildren(
     state,
     legalMoves,
     context.config.rules,
     cachedBestMove,
+    () => checkTimeout(context),
   );
   const maximizing = state.sideToMove === context.rootPlayer;
   let bestScore = maximizing ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
   let bestMove: Move | null = null;
   let bestLine: readonly Move[] = [];
 
-  for (const move of ordered) {
-    checkTimeout(context);
+  for (const { move, childState } of ordered) {
     const child = alphaBeta(
-      applyMove(state, move, context.config.rules),
+      childState,
       depth - 1,
       alpha,
       beta,
@@ -299,7 +335,7 @@ function alphaBeta(
     perspective: context.rootPlayer,
     contextKey: context.config.transpositionContextKey,
     depth,
-    score: bestScore,
+    score: scoreToTransposition(bestScore, ply),
     bound:
       bestScore <= alphaOriginal
         ? "upper"
@@ -334,6 +370,8 @@ export function searchPosition(
   if (terminal) {
     return {
       move: null,
+      searchedMove: null,
+      randomized: false,
       score: terminalScore(terminal, rootPlayer, 0),
       depthReached: 0,
       nodes: 0,
@@ -350,6 +388,8 @@ export function searchPosition(
   if (!fallback) {
     return {
       move: null,
+      searchedMove: null,
+      randomized: false,
       score: LOSS_SCORE,
       depthReached: 0,
       nodes: 0,
@@ -363,6 +403,8 @@ export function searchPosition(
   if (legalMoves.length === 1 && config.timeLimitMs > 0) {
     return {
       move: fallback,
+      searchedMove: fallback,
+      randomized: false,
       score: fallbackScore(state, fallback, rootPlayer, config),
       depthReached: 1,
       nodes: 1,
@@ -422,6 +464,8 @@ export function searchPosition(
 
   return {
     move: bestMove,
+    searchedMove: bestMove,
+    randomized: false,
     score: bestScore,
     depthReached,
     nodes: context.nodes,

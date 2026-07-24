@@ -29,6 +29,8 @@ import {
   movesEqual,
   orderMoves,
   resolveAIConfig,
+  scoreFromTransposition,
+  scoreToTransposition,
   searchPosition,
 } from "../packages/titan-ai/src/index.ts";
 import type { AIConfig } from "../packages/titan-ai/src/index.ts";
@@ -237,6 +239,18 @@ test("Easy can make varied choices while every choice remains legal", () => {
   assertLegal(state, first.move);
   assertLegal(state, last.move);
   assert.equal(movesEqual(first.move, last.move), false);
+  assertLegal(state, first.searchedMove);
+  assertLegal(state, last.searchedMove);
+  assert.equal(movesEqual(first.searchedMove, last.searchedMove), true);
+  assert.equal(
+    first.randomized,
+    !movesEqual(first.move, first.searchedMove),
+  );
+  assert.equal(
+    last.randomized,
+    !movesEqual(last.move, last.searchedMove),
+  );
+  assert.ok(first.randomized || last.randomized);
 });
 
 test("Hard is deterministic and ignores the random source", () => {
@@ -454,6 +468,40 @@ test("move ordering preserves every engine move and prioritizes the table move",
   );
 });
 
+test("move ordering checks its deadline during expensive child scoring", () => {
+  const state = createInitialState();
+  const legalMoves = getLegalMoves(state, DEFAULT_RULE_CONFIG);
+  let checks = 0;
+
+  assert.throws(
+    () =>
+      orderMoves(
+        state,
+        legalMoves,
+        DEFAULT_RULE_CONFIG,
+        null,
+        () => {
+          checks += 1;
+          if (checks === 3) throw new Error("ordering deadline");
+        },
+      ),
+    /ordering deadline/,
+  );
+  assert.equal(checks, 3);
+});
+
+test("mate-distance scores are normalized when stored across different plies", () => {
+  const storedWin = scoreToTransposition(WIN_SCORE - 7, 7);
+  const storedLoss = scoreToTransposition(LOSS_SCORE + 7, 7);
+
+  assert.equal(storedWin, WIN_SCORE);
+  assert.equal(storedLoss, LOSS_SCORE);
+  assert.equal(scoreFromTransposition(storedWin, 2), WIN_SCORE - 2);
+  assert.equal(scoreFromTransposition(storedLoss, 2), LOSS_SCORE + 2);
+  assert.equal(scoreToTransposition(1234, 9), 1234);
+  assert.equal(scoreFromTransposition(-1234, 9), -1234);
+});
+
 test("transposition entries keep bounds and search contexts separate", () => {
   const table = new TranspositionTable(20);
   table.beginSearch();
@@ -485,6 +533,42 @@ test("transposition entries keep bounds and search contexts separate", () => {
     "upper",
   );
   assert.equal(table.peek("same-position", 1, "missing"), undefined);
+});
+
+test("custom evaluators require an explicit stable key for table reuse", () => {
+  const firstEvaluator = { evaluate: () => 10 };
+  const secondEvaluator = { evaluate: () => 10 };
+  const stableFirst = resolveAIConfig("hard", {
+    evaluator: firstEvaluator,
+    evaluatorCacheKey: "material-v1",
+  });
+  const stableSecond = resolveAIConfig("hard", {
+    evaluator: secondEvaluator,
+    evaluatorCacheKey: "material-v1",
+  });
+  const different = resolveAIConfig("hard", {
+    evaluator: secondEvaluator,
+    evaluatorCacheKey: "material-v2",
+  });
+  const isolatedFirst = resolveAIConfig("hard", {
+    evaluator: firstEvaluator,
+  });
+  const isolatedSecond = resolveAIConfig("hard", {
+    evaluator: firstEvaluator,
+  });
+
+  assert.equal(
+    stableFirst.transpositionContextKey,
+    stableSecond.transpositionContextKey,
+  );
+  assert.notEqual(
+    stableFirst.transpositionContextKey,
+    different.transpositionContextKey,
+  );
+  assert.notEqual(
+    isolatedFirst.transpositionContextKey,
+    isolatedSecond.transpositionContextKey,
+  );
 });
 
 test("an illegal cached best move cannot escape as the root result", () => {
@@ -549,6 +633,8 @@ test("timeout fallback is immediate, legal, and does not randomize", () => {
   assert.equal(result.depthReached, 0);
   assert.equal(result.timedOut, true);
   assert.equal(result.nodes, 0);
+  assert.equal(result.randomized, false);
+  assert.ok(movesEqual(result.move, result.searchedMove));
   assert.ok(movesEqual(result.move, getLegalMoves(state, DEFAULT_RULE_CONFIG)[0]!));
 });
 
@@ -631,6 +717,31 @@ test("quiescence avoids a capture horizon mistake even at its safety cap", () =>
     ),
     false,
   );
+});
+
+test("quiescence counts each visited node exactly once", () => {
+  const state = createInitialState();
+  const legalMoves = getLegalMoves(state, DEFAULT_RULE_CONFIG);
+  assert.ok(
+    legalMoves.every((move) =>
+      getLegalMoves(
+        applyMove(state, move, DEFAULT_RULE_CONFIG),
+        DEFAULT_RULE_CONFIG,
+      ).every((reply) => reply.capturedPieceIds.length === 0),
+    ),
+  );
+
+  const result = chooseMove(state, "hard", {
+    maxDepth: 1,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+    useQuiescence: true,
+    useTranspositionTable: false,
+  });
+
+  assert.equal(result.nodes, 1 + legalMoves.length);
+  assert.equal(result.randomized, false);
+  assert.ok(movesEqual(result.move, result.searchedMove));
 });
 
 test("difficulty profiles have genuinely different search limits", () => {

@@ -11,8 +11,19 @@ export {
   createHandcraftedEvaluator,
   evaluatePosition,
 } from "./evaluate.ts";
-export { moveKey, movesEqual, orderMoves } from "./move-ordering.ts";
-export { searchPosition } from "./search.ts";
+export {
+  moveKey,
+  movesEqual,
+  orderMoves,
+  orderMovesWithChildren,
+  type OrderedMove,
+} from "./move-ordering.ts";
+export {
+  MATE_SCORE_THRESHOLD,
+  scoreFromTransposition,
+  scoreToTransposition,
+  searchPosition,
+} from "./search.ts";
 export {
   TranspositionTable,
   type StoredTransposition,

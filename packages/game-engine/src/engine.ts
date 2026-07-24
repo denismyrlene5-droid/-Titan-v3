@@ -303,6 +303,34 @@ function generateQuietMoves(
   return moves;
 }
 
+/**
+ * Returns a single piece's movement options without considering captures by
+ * other pieces. This is intended for mobility analysis; getLegalMoves remains
+ * the source of truth for playable moves in a position.
+ */
+export function generatePieceMoves(
+  state: BoardState,
+  pieceId: string,
+  config: RuleConfig,
+): Move[] {
+  const piece = state.pieces.find((candidate) => candidate.id === pieceId);
+  if (!piece || piece.player !== state.sideToMove) return [];
+
+  let captures = generateCaptures(state, pieceId, config);
+  if (captures.length > 0 && config.requireMaximumCapture) {
+    const maximum = Math.max(
+      ...captures.map((move) => move.capturedPieceIds.length),
+    );
+    captures = captures.filter(
+      (move) => move.capturedPieceIds.length === maximum,
+    );
+  }
+  if (captures.length > 0 && config.mandatoryCapture) return captures;
+
+  const quietMoves = generateQuietMoves(state, piece, config);
+  return captures.length > 0 ? [...captures, ...quietMoves] : quietMoves;
+}
+
 export function getLegalMoves(
   state: BoardState,
   config: RuleConfig,
