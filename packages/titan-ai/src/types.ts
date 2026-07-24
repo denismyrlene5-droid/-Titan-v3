@@ -43,6 +43,7 @@ export interface AIConfig {
   readonly maxQuiescenceDepth: number;
   readonly useTranspositionTable: boolean;
   readonly transpositionTableMaxSize: number;
+  readonly transpositionContextKey: string;
   readonly rules: RuleConfig;
   readonly evaluationWeights: EvaluationWeights;
   readonly evaluator: PositionEvaluator;
@@ -56,6 +57,8 @@ export interface SearchResult {
   score: number;
   depthReached: number;
   nodes: number;
+  transpositionTableHits: number;
+  cutoffs: number;
   elapsedMs: number;
   principalVariation: readonly Move[];
   timedOut: boolean;

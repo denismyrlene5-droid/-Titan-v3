@@ -52,12 +52,12 @@ function orderingScore(
   const immediateWin = isTerminal(next, rules)?.winner === state.sideToMove;
 
   return (
+    (movesEqual(move, transpositionBest) ? 10_000_000_000 : 0) +
     (immediateWin ? 1_000_000_000 : 0) +
     (move.capturedPieceIds.length > 0 ? 100_000_000 : 0) +
     move.capturedPieceIds.length * 1_000_000 +
     (move.promotes ? 100_000 : 0) +
     (movingPiece?.kind === "king" ? 10_000 : 0) +
-    (movesEqual(move, transpositionBest) ? 1_000 : 0) +
     advancementScore(state, move) * 100
   );
 }

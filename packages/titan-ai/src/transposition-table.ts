@@ -5,6 +5,7 @@ export type TranspositionBound = "exact" | "lower" | "upper";
 export interface TranspositionEntry {
   readonly hash: string;
   readonly perspective: Player;
+  readonly contextKey: string;
   readonly depth: number;
   readonly score: number;
   readonly bound: TranspositionBound;
@@ -15,14 +16,19 @@ export interface TranspositionEntry {
 export interface StoredTransposition {
   readonly hash: string;
   readonly perspective: Player;
+  readonly contextKey?: string;
   readonly depth: number;
   readonly score: number;
   readonly bound: TranspositionBound;
   readonly bestMove: Move | null;
 }
 
-function tableKey(hash: string, perspective: Player): string {
-  return `${perspective}|${hash}`;
+function tableKey(
+  hash: string,
+  perspective: Player,
+  contextKey: string,
+): string {
+  return `${contextKey}|${perspective}|${hash}`;
 }
 
 export class TranspositionTable {
@@ -60,19 +66,28 @@ export class TranspositionTable {
     return this.#generation;
   }
 
-  probe(hash: string, perspective: Player): TranspositionEntry | undefined {
+  probe(
+    hash: string,
+    perspective: Player,
+    contextKey = "default",
+  ): TranspositionEntry | undefined {
     this.#probes += 1;
-    const entry = this.#entries.get(tableKey(hash, perspective));
+    const entry = this.#entries.get(tableKey(hash, perspective, contextKey));
     if (entry) this.#hits += 1;
     return entry;
   }
 
-  peek(hash: string, perspective: Player): TranspositionEntry | undefined {
-    return this.#entries.get(tableKey(hash, perspective));
+  peek(
+    hash: string,
+    perspective: Player,
+    contextKey = "default",
+  ): TranspositionEntry | undefined {
+    return this.#entries.get(tableKey(hash, perspective, contextKey));
   }
 
   store(value: StoredTransposition): void {
-    const key = tableKey(value.hash, value.perspective);
+    const contextKey = value.contextKey ?? "default";
+    const key = tableKey(value.hash, value.perspective, contextKey);
     const current = this.#entries.get(key);
     if (
       current &&
@@ -89,6 +104,7 @@ export class TranspositionTable {
       key,
       Object.freeze({
         ...value,
+        contextKey,
         generation: this.#generation,
       }),
     );

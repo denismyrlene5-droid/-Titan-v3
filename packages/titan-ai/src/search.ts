@@ -10,7 +10,7 @@ import type {
   TerminalResult,
 } from "../../game-engine/src/index.ts";
 import { LOSS_SCORE, WIN_SCORE } from "./evaluate.ts";
-import { orderMoves } from "./move-ordering.ts";
+import { movesEqual, orderMoves } from "./move-ordering.ts";
 import { TranspositionTable } from "./transposition-table.ts";
 import type {
   AIConfig,
@@ -28,6 +28,7 @@ interface SearchContext {
   readonly startedAt: number;
   readonly deadline: number;
   nodes: number;
+  cutoffs: number;
 }
 
 interface NodeResult {
@@ -61,6 +62,62 @@ function evaluateLeaf(state: BoardState, context: SearchContext): number {
   );
 }
 
+function evaluateQuiescenceLimit(
+  state: BoardState,
+  alpha: number,
+  beta: number,
+  ply: number,
+  context: SearchContext,
+): NodeResult {
+  checkTimeout(context);
+  context.nodes += 1;
+  const terminal = isTerminal(state, context.config.rules);
+  if (terminal) {
+    return {
+      score: terminalScore(terminal, context.rootPlayer, ply),
+      principalVariation: [],
+    };
+  }
+
+  const captures = getLegalMoves(state, context.config.rules).filter(
+    (move) => move.capturedPieceIds.length > 0,
+  );
+  if (captures.length === 0) {
+    return { score: evaluateLeaf(state, context), principalVariation: [] };
+  }
+
+  const maximizing = state.sideToMove === context.rootPlayer;
+  let bestScore = maximizing ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
+  let bestLine: readonly Move[] = [];
+  for (const move of orderMoves(state, captures, context.config.rules)) {
+    const child = evaluateQuiescenceLimit(
+      applyMove(state, move, context.config.rules),
+      alpha,
+      beta,
+      ply + 1,
+      context,
+    );
+    if (
+      (maximizing && child.score > bestScore) ||
+      (!maximizing && child.score < bestScore)
+    ) {
+      bestScore = child.score;
+      bestLine = [move, ...child.principalVariation];
+    }
+    if (maximizing) {
+      alpha = Math.max(alpha, bestScore);
+    } else {
+      beta = Math.min(beta, bestScore);
+    }
+    if (alpha >= beta) {
+      context.cutoffs += 1;
+      break;
+    }
+  }
+
+  return { score: bestScore, principalVariation: bestLine };
+}
+
 function quiescence(
   state: BoardState,
   alpha: number,
@@ -84,10 +141,7 @@ function quiescence(
   const captures = legalMoves.filter(
     (move) => move.capturedPieceIds.length > 0,
   );
-  if (
-    captures.length === 0 ||
-    quiescenceDepth >= context.config.maxQuiescenceDepth
-  ) {
+  if (captures.length === 0) {
     return { score: evaluateLeaf(state, context), principalVariation: [] };
   }
 
@@ -98,14 +152,24 @@ function quiescence(
 
   for (const move of ordered) {
     checkTimeout(context);
-    const child = quiescence(
-      applyMove(state, move, context.config.rules),
-      alpha,
-      beta,
-      ply + 1,
-      quiescenceDepth + 1,
-      context,
-    );
+    const childState = applyMove(state, move, context.config.rules);
+    const child =
+      quiescenceDepth >= context.config.maxQuiescenceDepth
+        ? evaluateQuiescenceLimit(
+            childState,
+            alpha,
+            beta,
+            ply + 1,
+            context,
+          )
+        : quiescence(
+            childState,
+            alpha,
+            beta,
+            ply + 1,
+            quiescenceDepth + 1,
+            context,
+          );
 
     if (
       (maximizing && child.score > bestScore) ||
@@ -119,7 +183,10 @@ function quiescence(
     } else {
       beta = Math.min(beta, bestScore);
     }
-    if (alpha >= beta) break;
+    if (alpha >= beta) {
+      context.cutoffs += 1;
+      break;
+    }
   }
 
   return { score: bestScore, principalVariation: bestLine };
@@ -150,32 +217,47 @@ function alphaBeta(
     return { score: evaluateLeaf(state, context), principalVariation: [] };
   }
 
+  const legalMoves = getLegalMoves(state, context.config.rules);
+  const cached = context.table?.probe(
+    state.positionHash,
+    context.rootPlayer,
+    context.config.transpositionContextKey,
+  );
+  const cachedBestMove =
+    cached?.bestMove === null || cached?.bestMove === undefined
+      ? null
+      : (legalMoves.find((move) => movesEqual(move, cached.bestMove)) ?? null);
+  const usableCached =
+    cached && cachedBestMove === null ? undefined : cached;
   const alphaOriginal = alpha;
   const betaOriginal = beta;
-  const cached = context.table?.probe(state.positionHash, context.rootPlayer);
-  if (cached && cached.depth >= depth) {
-    if (cached.bound === "exact") {
+  if (usableCached && usableCached.depth >= depth) {
+    if (usableCached.bound === "exact") {
       return {
-        score: cached.score,
-        principalVariation: cached.bestMove ? [cached.bestMove] : [],
+        score: usableCached.score,
+        principalVariation: cachedBestMove ? [cachedBestMove] : [],
       };
     }
-    if (cached.bound === "lower") alpha = Math.max(alpha, cached.score);
-    if (cached.bound === "upper") beta = Math.min(beta, cached.score);
+    if (usableCached.bound === "lower") {
+      alpha = Math.max(alpha, usableCached.score);
+    }
+    if (usableCached.bound === "upper") {
+      beta = Math.min(beta, usableCached.score);
+    }
     if (alpha >= beta) {
+      context.cutoffs += 1;
       return {
-        score: cached.score,
-        principalVariation: cached.bestMove ? [cached.bestMove] : [],
+        score: usableCached.score,
+        principalVariation: cachedBestMove ? [cachedBestMove] : [],
       };
     }
   }
 
-  const legalMoves = getLegalMoves(state, context.config.rules);
   const ordered = orderMoves(
     state,
     legalMoves,
     context.config.rules,
-    cached?.bestMove ?? null,
+    cachedBestMove,
   );
   const maximizing = state.sideToMove === context.rootPlayer;
   let bestScore = maximizing ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
@@ -206,12 +288,16 @@ function alphaBeta(
     } else {
       beta = Math.min(beta, bestScore);
     }
-    if (alpha >= beta) break;
+    if (alpha >= beta) {
+      context.cutoffs += 1;
+      break;
+    }
   }
 
   context.table?.store({
     hash: state.positionHash,
     perspective: context.rootPlayer,
+    contextKey: context.config.transpositionContextKey,
     depth,
     score: bestScore,
     bound:
@@ -251,6 +337,8 @@ export function searchPosition(
       score: terminalScore(terminal, rootPlayer, 0),
       depthReached: 0,
       nodes: 0,
+      transpositionTableHits: 0,
+      cutoffs: 0,
       elapsedMs: Math.max(0, config.now() - startedAt),
       principalVariation: [],
       timedOut: false,
@@ -265,6 +353,8 @@ export function searchPosition(
       score: LOSS_SCORE,
       depthReached: 0,
       nodes: 0,
+      transpositionTableHits: 0,
+      cutoffs: 0,
       elapsedMs: Math.max(0, config.now() - startedAt),
       principalVariation: [],
       timedOut: false,
@@ -276,6 +366,8 @@ export function searchPosition(
       score: fallbackScore(state, fallback, rootPlayer, config),
       depthReached: 1,
       nodes: 1,
+      transpositionTableHits: 0,
+      cutoffs: 0,
       elapsedMs: Math.max(0, config.now() - startedAt),
       principalVariation: [fallback],
       timedOut: false,
@@ -283,7 +375,7 @@ export function searchPosition(
   }
 
   let bestMove = fallback;
-  let bestScore = fallbackScore(state, fallback, rootPlayer, config);
+  let bestScore = 0;
   let bestLine: readonly Move[] = [fallback];
   let depthReached = 0;
   let timedOut = config.timeLimitMs <= 0;
@@ -291,6 +383,7 @@ export function searchPosition(
     ? (config.transpositionTable ??
       new TranspositionTable(config.transpositionTableMaxSize))
     : null;
+  const tableHitsAtStart = table?.hits ?? 0;
   table?.beginSearch();
   const context: SearchContext = {
     rootPlayer,
@@ -299,6 +392,7 @@ export function searchPosition(
     startedAt,
     deadline: startedAt + Math.max(0, config.timeLimitMs),
     nodes: 0,
+    cutoffs: 0,
   };
 
   if (!timedOut) {
@@ -331,6 +425,8 @@ export function searchPosition(
     score: bestScore,
     depthReached,
     nodes: context.nodes,
+    transpositionTableHits: (table?.hits ?? 0) - tableHitsAtStart,
+    cutoffs: context.cutoffs,
     elapsedMs: elapsed(context),
     principalVariation: bestLine,
     timedOut,

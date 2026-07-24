@@ -23,6 +23,7 @@ export function chooseMove(
   const result = searchPosition(state, resolved);
   if (
     result.move === null ||
+    (result.timedOut && result.depthReached === 0) ||
     resolved.randomMoveChance <= 0 ||
     resolved.random() >= resolved.randomMoveChance
   ) {

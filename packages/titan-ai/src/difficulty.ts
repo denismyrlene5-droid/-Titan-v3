@@ -3,7 +3,56 @@ import {
   DEFAULT_EVALUATION_WEIGHTS,
   createHandcraftedEvaluator,
 } from "./evaluate.ts";
-import type { AIConfig, Difficulty } from "./types.ts";
+import type {
+  AIConfig,
+  Difficulty,
+  EvaluationWeights,
+  PositionEvaluator,
+} from "./types.ts";
+
+const evaluatorIds = new WeakMap<PositionEvaluator, number>();
+let nextEvaluatorId = 1;
+
+function evaluatorId(evaluator: PositionEvaluator): number {
+  const existing = evaluatorIds.get(evaluator);
+  if (existing !== undefined) return existing;
+  const assigned = nextEvaluatorId;
+  nextEvaluatorId += 1;
+  evaluatorIds.set(evaluator, assigned);
+  return assigned;
+}
+
+function evaluationKey(weights: EvaluationWeights): string {
+  return Object.keys(DEFAULT_EVALUATION_WEIGHTS)
+    .map((key) => weights[key as keyof EvaluationWeights])
+    .join(",");
+}
+
+function contextKey(
+  config: Omit<AIConfig, "transpositionContextKey">,
+  customEvaluator: boolean,
+): string {
+  const rules = config.rules;
+  const rulesKey = [
+    rules.boardSize,
+    rules.piecesPerSide,
+    rules.mandatoryCapture,
+    rules.menCaptureBackward,
+    rules.flyingKings,
+    rules.requireMaximumCapture,
+    rules.promotionTiming,
+    rules.onePieceRemainingMeansLoss,
+  ].join(",");
+  const evaluatorKey = customEvaluator
+    ? `custom:${evaluatorId(config.evaluator)}`
+    : `handcrafted:${evaluationKey(config.evaluationWeights)}`;
+  return [
+    rulesKey,
+    evaluatorKey,
+    config.useQuiescence,
+    config.maxQuiescenceDepth,
+  ].join("|");
+}
 
 export type DifficultyConfig = Pick<
   AIConfig,
@@ -61,16 +110,24 @@ export function resolveAIConfig(
   const level = DIFFICULTY_CONFIGS[difficulty];
   const evaluationWeights =
     overrides.evaluationWeights ?? DEFAULT_EVALUATION_WEIGHTS;
+  const evaluator =
+    overrides.evaluator ?? createHandcraftedEvaluator(evaluationWeights);
 
-  return {
+  const resolved = {
     ...level,
     maxQuiescenceDepth: 8,
     transpositionTableMaxSize: 100_000,
     rules: DEFAULT_RULE_CONFIG,
-    evaluationWeights,
-    evaluator: createHandcraftedEvaluator(evaluationWeights),
     random: Math.random,
     now: Date.now,
     ...overrides,
+    evaluationWeights,
+    evaluator,
+  };
+  return {
+    ...resolved,
+    transpositionContextKey:
+      overrides.transpositionContextKey ??
+      contextKey(resolved, overrides.evaluator !== undefined),
   };
 }
