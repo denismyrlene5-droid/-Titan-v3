@@ -15,11 +15,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - run: npm run typecheck
+      - run: npm run test:engine
+      - run: npm run test:phase2
+      - run: npm run test:ai
       - run: npm test
-      - run: npm run benchmark:ai
       - run: npm run build
+      - run: npm run benchmark:ai
       - uses: actions/upload-artifact@v4
         with:
           name: titan-v3-web
