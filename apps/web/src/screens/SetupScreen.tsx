@@ -16,7 +16,7 @@ export function SetupScreen({
   const [options, setOptions] = useState<GameOptions>({
     ...DEFAULT_GAME_OPTIONS,
     opponentType: initialOpponent,
-    opponentName: initialOpponent === "computer" ? "Titan Basic" : "Player 2",
+    opponentName: initialOpponent === "computer" ? "Titan V3" : "Player 2",
   });
   const update = <Key extends keyof GameOptions>(
     key: Key,
@@ -48,7 +48,7 @@ export function SetupScreen({
                 update("opponentType", value);
                 update(
                   "opponentName",
-                  value === "computer" ? "Titan Basic" : "Player 2",
+                  value === "computer" ? "Titan V3" : "Player 2",
                 );
               }}
             >
@@ -114,9 +114,11 @@ export function SetupScreen({
                 update("aiDifficulty", event.target.value as GameOptions["aiDifficulty"])
               }
             >
-              <option>Easy</option>
-              <option disabled>Medium (Phase 3)</option>
-              <option disabled>Hard (Phase 3)</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+              <option value="master">Master</option>
+              <option value="titan">Titan</option>
             </select>
           </label>
           <label>

@@ -4,13 +4,18 @@ import { Board } from "./components/Board.tsx";
 import { GameControls } from "./components/GameControls.tsx";
 import { MoveHistory } from "./components/MoveHistory.tsx";
 import { PlayerCard } from "./components/PlayerCard.tsx";
-import { basicComputerPolicy } from "./game/computer.ts";
+import {
+  acceptComputerDraw,
+  applyComputerSearchResult,
+  createComputerSearchRequest,
+  isComputerTurn,
+} from "./game/computer.ts";
+import type { ComputerSearchResponse } from "./game/computer.ts";
 import {
   chooseDestination,
   createGameSession,
   interactionView,
   offerDraw,
-  playCanonicalMove,
   resignGame,
   respondToDraw,
   restartGame,
@@ -63,9 +68,12 @@ export default function App() {
   const [notice, setNotice] = useState<string>();
   const recordedResult = useRef<GameResult | undefined>(undefined);
   const computerActionGuard = useRef(new ComputerActionGuard());
+  const computerWorker = useRef<Worker | null>(null);
 
   const cancelPendingComputerAction = () => {
     computerActionGuard.current.cancel();
+    computerWorker.current?.terminate();
+    computerWorker.current = null;
     setThinking(false);
   };
 
@@ -103,9 +111,7 @@ export default function App() {
 
   const computerTurn =
     screen === "game" &&
-    session.options.opponentType === "computer" &&
-    session.status === "playing" &&
-    session.board.sideToMove !== session.options.humanSide;
+    isComputerTurn(session);
 
   useEffect(() => {
     if (!computerTurn) {
@@ -113,29 +119,53 @@ export default function App() {
       return;
     }
     const actionGeneration = computerActionGuard.current.start();
-    const positionHash = session.board.positionHash;
+    const request = createComputerSearchRequest(session, actionGeneration);
+    if (!request) return;
+    const worker = new Worker(
+      new URL("./game/titan.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    computerWorker.current = worker;
     setThinking(true);
-    const timer = window.setTimeout(() => {
-      if (!computerActionGuard.current.isCurrent(actionGeneration)) return;
+    worker.onmessage = (event: MessageEvent<ComputerSearchResponse>) => {
+      const response = event.data;
+      if (
+        !computerActionGuard.current.isCurrent(actionGeneration) ||
+        response.requestId !== actionGeneration ||
+        response.positionHash !== request.positionHash
+      ) {
+        return;
+      }
+      worker.terminate();
+      if (computerWorker.current === worker) computerWorker.current = null;
       setSession((current) => {
-        if (
-          !computerActionGuard.current.isCurrent(actionGeneration) ||
-          current.board.positionHash !== positionHash
-        ) {
+        if (!computerActionGuard.current.isCurrent(actionGeneration)) {
           return current;
         }
-        const move = basicComputerPolicy.chooseMove(current.board);
-        return move ? playCanonicalMove(current, move) : current;
+        return applyComputerSearchResult(
+          current,
+          request.positionHash,
+          response.result,
+        );
       });
       if (computerActionGuard.current.isCurrent(actionGeneration)) {
         setThinking(false);
       }
-    }, 650);
+    };
+    worker.onerror = () => {
+      if (!computerActionGuard.current.isCurrent(actionGeneration)) return;
+      worker.terminate();
+      if (computerWorker.current === worker) computerWorker.current = null;
+      setThinking(false);
+      setNotice("Titan could not complete that search.");
+    };
+    worker.postMessage(request);
     return () => {
-      window.clearTimeout(timer);
+      worker.terminate();
+      if (computerWorker.current === worker) computerWorker.current = null;
       computerActionGuard.current.cancel();
     };
-  }, [computerTurn, session.board.positionHash]);
+  }, [computerTurn, session]);
 
   useEffect(() => {
     if (!notice) return;
@@ -183,9 +213,11 @@ export default function App() {
         : session.board.sideToMove;
     const offered = offerDraw(session, offeredBy);
     if (session.options.opponentType === "computer") {
-      const accepted = basicComputerPolicy.acceptDraw(session.board);
+      const accepted = acceptComputerDraw(session.board);
       setSession(respondToDraw(offered, accepted));
-      if (!accepted) setNotice("Titan Basic rejected the draw.");
+      if (!accepted) {
+        setNotice(`${session.options.opponentName} rejected the draw.`);
+      }
       return;
     }
     setSession(offered);
@@ -253,7 +285,7 @@ export default function App() {
             <div>
               <strong>
                 {thinking
-                  ? "Titan Basic is thinking…"
+                  ? `${session.options.opponentName} is thinking…`
                   : view.captureRequired
                     ? "Capture required"
                     : `${playerName(session.options, session.board.sideToMove)} to move`}

@@ -5,20 +5,28 @@ import {
   createInitialState,
   createState,
   getLegalMoves,
-  validateMove,
   type Piece,
 } from "../packages/game-engine/src/index.ts";
+import {
+  chooseMove,
+  type Difficulty,
+} from "../packages/titan-ai/src/index.ts";
 import {
   chooseDestination,
   createGameSession,
   interactionView,
   offerDraw,
   playCanonicalMove,
+  restartGame,
   resignGame,
   respondToDraw,
   selectPiece,
 } from "../apps/web/src/game/controller.ts";
-import { basicComputerPolicy } from "../apps/web/src/game/computer.ts";
+import {
+  applyComputerSearchResult,
+  createComputerSearchRequest,
+  isComputerTurn,
+} from "../apps/web/src/game/computer.ts";
 import {
   ComputerActionGuard,
   shouldDisableGameInput,
@@ -204,23 +212,157 @@ test("match scoring counts wins and draws and finds a target winner", () => {
   assert.equal(match.winner, 1);
 });
 
-test("temporary computer selects a legal move and prefers most captures", () => {
+test("Titan moves first when the human chooses Player 2", () => {
+  const session = createGameSession({
+    opponentType: "computer",
+    humanSide: 2,
+    opponentName: "Titan V3",
+    aiDifficulty: "hard",
+  });
+  const request = createComputerSearchRequest(session, 11)!;
+  const result = chooseMove(request.state, request.difficulty, {
+    maxDepth: 1,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+  });
+  const moved = applyComputerSearchResult(
+    session,
+    request.positionHash,
+    result,
+  );
+
+  assert.equal(request.requestId, 11);
+  assert.equal(request.difficulty, "hard");
+  assert.equal(request.positionHash, session.board.positionHash);
+  assert.equal(moved.history.length, 1);
+  assert.equal(moved.board.sideToMove, 2);
+  assert.deepEqual(moved.lastMove, result.move);
+  assert.equal(isComputerTurn(moved), false);
+  assert.strictEqual(
+    applyComputerSearchResult(moved, request.positionHash, result),
+    moved,
+  );
+});
+
+test("Titan responds after a Player 1 human move", () => {
+  let session = createGameSession({
+    opponentType: "computer",
+    humanSide: 1,
+    aiDifficulty: "medium",
+  });
+  session = playCanonicalMove(
+    session,
+    getLegalMoves(session.board, DEFAULT_RULE_CONFIG)[0]!,
+  );
+  const request = createComputerSearchRequest(session, 12)!;
+  const result = chooseMove(request.state, request.difficulty, {
+    maxDepth: 1,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+  });
+  const moved = applyComputerSearchResult(
+    session,
+    request.positionHash,
+    result,
+  );
+
+  assert.equal(isComputerTurn(session), true);
+  assert.equal(request.difficulty, "medium");
+  assert.equal(moved.history.length, 2);
+  assert.equal(moved.board.sideToMove, 1);
+  assert.equal(isComputerTurn(moved), false);
+});
+
+test("all five selected difficulties reach the computer search request", () => {
+  const difficulties: readonly Difficulty[] = [
+    "easy",
+    "medium",
+    "hard",
+    "master",
+    "titan",
+  ];
+
+  for (const difficulty of difficulties) {
+    const session = createGameSession({
+      opponentType: "computer",
+      humanSide: 2,
+      aiDifficulty: difficulty,
+    });
+    assert.equal(
+      createComputerSearchRequest(session, 1)?.difficulty,
+      difficulty,
+    );
+  }
+});
+
+test("stale computer search results cannot alter an advanced session", () => {
+  const session = createGameSession({
+    opponentType: "computer",
+    humanSide: 2,
+  });
+  const request = createComputerSearchRequest(session, 13)!;
+  const result = chooseMove(request.state, request.difficulty, {
+    maxDepth: 1,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+  });
+  const advanced = applyComputerSearchResult(
+    session,
+    request.positionHash,
+    result,
+  );
+
+  assert.strictEqual(
+    applyComputerSearchResult(advanced, request.positionHash, result),
+    advanced,
+  );
+  assert.strictEqual(
+    applyComputerSearchResult(
+      session,
+      `${request.positionHash}-stale`,
+      result,
+    ),
+    session,
+  );
+});
+
+test("Titan completes a forced multi-capture as one recorded move", () => {
   const board = createState([
     piece("p1-a", 1, 41),
-    piece("p1-b", 1, 43),
+    piece("p1-safe", 1, 49),
     piece("p2-a", 2, 36),
     piece("p2-b", 2, 26),
-    piece("p2-c", 2, 38),
     piece("p2-safe", 2, 5),
   ]);
-  const selected = basicComputerPolicy.chooseMove(board)!;
-  assert.equal(validateMove(board, selected, DEFAULT_RULE_CONFIG).valid, true);
-  const maximum = Math.max(
-    ...getLegalMoves(board, DEFAULT_RULE_CONFIG).map(
-      (move) => move.capturedPieceIds.length,
+  const session = createGameSession(
+    {
+      opponentType: "computer",
+      humanSide: 2,
+      aiDifficulty: "hard",
+    },
+    board,
+  );
+  const request = createComputerSearchRequest(session, 14)!;
+  const result = chooseMove(request.state, request.difficulty, {
+    maxDepth: 1,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+  });
+  const moved = applyComputerSearchResult(
+    session,
+    request.positionHash,
+    result,
+  );
+
+  assert.equal(result.move?.path.length, 2);
+  assert.equal(moved.history.length, 1);
+  assert.equal(moved.history[0]?.captures, 2);
+  assert.deepEqual(moved.history[0]?.capturedPieceIds, ["p2-a", "p2-b"]);
+  assert.ok(
+    ["p2-a", "p2-b"].every(
+      (id) => !moved.board.pieces.some((candidate) => candidate.id === id),
     ),
   );
-  assert.equal(selected.capturedPieceIds.length, maximum);
 });
 
 test("game-changing input disables only when play is not available", () => {
@@ -258,15 +400,37 @@ test("game-changing input disables only when play is not available", () => {
   );
 });
 
-test("cancelled computer actions cannot apply to a newer game session", () => {
+test("restart and rematch invalidate an in-flight result at the same hash", () => {
+  const session = createGameSession({
+    opponentType: "computer",
+    humanSide: 2,
+  });
   const guard = new ComputerActionGuard();
-  const staleAction = guard.start();
+  const restartAction = guard.start();
+  const request = createComputerSearchRequest(session, restartAction)!;
+  const result = chooseMove(request.state, request.difficulty, {
+    maxDepth: 1,
+    timeLimitMs: 5_000,
+    randomMoveChance: 0,
+  });
+  const restarted = restartGame(session);
   guard.cancel();
 
-  assert.equal(guard.isCurrent(staleAction), false);
+  const afterRestart = guard.isCurrent(restartAction)
+    ? applyComputerSearchResult(restarted, request.positionHash, result)
+    : restarted;
+  assert.equal(guard.isCurrent(restartAction), false);
+  assert.strictEqual(afterRestart, restarted);
+  assert.equal(restarted.history.length, 0);
+  assert.equal(restarted.board.positionHash, session.board.positionHash);
 
-  const currentAction = guard.start();
-  assert.equal(guard.isCurrent(currentAction), true);
+  const rematchAction = guard.start();
+  const rematched = createGameSession(session.options);
   guard.cancel();
-  assert.equal(guard.isCurrent(currentAction), false);
+  const afterRematch = guard.isCurrent(rematchAction)
+    ? applyComputerSearchResult(rematched, request.positionHash, result)
+    : rematched;
+  assert.equal(guard.isCurrent(rematchAction), false);
+  assert.strictEqual(afterRematch, rematched);
+  assert.equal(rematched.board.positionHash, session.board.positionHash);
 });

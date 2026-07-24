@@ -3,11 +3,12 @@ import type {
   Move,
   Player,
 } from "../../../../packages/game-engine/src/index.ts";
+import type { Difficulty } from "../../../../packages/titan-ai/src/index.ts";
 
 export type OpponentType = "human" | "computer";
 export type PieceAppearance = "gold" | "ivory" | "ruby";
 export type BoardOrientation = "player1" | "player2";
-export type AiDifficulty = "Easy" | "Medium" | "Hard";
+export type AiDifficulty = Difficulty;
 export type GameStatus = "playing" | "finished";
 export type ResultReason =
   | "no_pieces"
@@ -47,13 +48,13 @@ export interface GameSession {
   readonly initialState: BoardState;
   readonly board: BoardState;
   readonly options: GameOptions;
-  readonly selectedPieceId?: string;
+  readonly selectedPieceId?: string | undefined;
   readonly pathPrefix: readonly number[];
-  readonly lastMove?: Move;
+  readonly lastMove?: Move | undefined;
   readonly history: readonly HistoryEntry[];
   readonly status: GameStatus;
-  readonly result?: GameResult;
-  readonly drawOfferedBy?: Player;
+  readonly result?: GameResult | undefined;
+  readonly drawOfferedBy?: Player | undefined;
 }
 
 export interface InteractionView {
@@ -61,7 +62,7 @@ export interface InteractionView {
   readonly selectablePieceIds: ReadonlySet<string>;
   readonly destinations: ReadonlySet<number>;
   readonly captureRequired: boolean;
-  readonly selectedPieceId?: string;
+  readonly selectedPieceId?: string | undefined;
   readonly pathPrefix: readonly number[];
 }
 
@@ -71,5 +72,5 @@ export interface MatchState {
   readonly player2Score: number;
   readonly draws: number;
   readonly round: number;
-  readonly winner?: Player;
+  readonly winner?: Player | undefined;
 }

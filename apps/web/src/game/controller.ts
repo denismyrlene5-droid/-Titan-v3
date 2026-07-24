@@ -24,7 +24,7 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = Object.freeze({
   humanSide: 1,
   pieceAppearance: "gold",
   orientation: "player1",
-  aiDifficulty: "Easy",
+  aiDifficulty: "easy",
   matchTarget: 3,
 });
 
