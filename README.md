@@ -31,7 +31,7 @@ every state transition uses `applyMove`.
 ## Install and run
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
@@ -48,12 +48,21 @@ const result = chooseMove(createInitialState(), "titan", {
 });
 
 console.log(result.move);
+console.log(result.searchedMove, result.randomized);
 console.log(result.depthReached, result.score, result.principalVariation);
 ```
 
 `chooseMove` accepts `easy`, `medium`, `hard`, `master`, or `titan`. Settings
 such as maximum depth, time limit, random move chance, quiescence, table size,
 rules, evaluator, clock, and deterministic random source can be overridden.
+When a custom evaluator shares a transposition table across searches, provide a
+stable `evaluatorCacheKey`. Without one, Titan safely isolates that evaluator's
+entries instead of relying on JavaScript object identity.
+
+The default Ghana rules require a capture but do not require the
+maximum-length capture (`requireMaximumCapture: false`). Maximum-capture
+filtering remains a centralized, opt-in rule because `TITAN_SPEC.md` leaves
+that tournament-policy detail configurable.
 
 ## Run the tests
 
@@ -74,7 +83,8 @@ npm run benchmark:ai
 The benchmark runs deterministic Hard search over seven representative
 positions. It reports the selected move, score, completed depth, nodes, elapsed
 time, nodes per second, transposition-table hits, cutoffs, principal variation,
-and timeout status.
+and timeout status. Stabilization measurements are recorded in
+`docs/ai/STABILIZATION_BENCHMARK.md`.
 
 ## Production build
 

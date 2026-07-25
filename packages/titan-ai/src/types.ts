@@ -47,6 +47,7 @@ export interface AIConfig {
   readonly rules: RuleConfig;
   readonly evaluationWeights: EvaluationWeights;
   readonly evaluator: PositionEvaluator;
+  readonly evaluatorCacheKey?: string;
   readonly transpositionTable?: TranspositionTable;
   readonly random: () => number;
   readonly now: () => number;
@@ -54,6 +55,8 @@ export interface AIConfig {
 
 export interface SearchResult {
   move: Move | null;
+  searchedMove: Move | null;
+  randomized: boolean;
   score: number;
   depthReached: number;
   nodes: number;

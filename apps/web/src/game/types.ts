@@ -72,5 +72,6 @@ export interface MatchState {
   readonly player2Score: number;
   readonly draws: number;
   readonly round: number;
+  readonly roundStarter: Player;
   readonly winner?: Player | undefined;
 }

@@ -1,6 +1,7 @@
 import {
   coordinateToSquare,
   createState,
+  generatePieceMoves,
   getLegalMoves,
   isTerminal,
   squareToCoordinate,
@@ -100,35 +101,27 @@ function diagonalNeighbourSquares(piece: Piece): readonly number[] {
 }
 
 function pieceMoves(
-  state: BoardState,
+  playerState: BoardState,
   piece: Piece,
   rules: RuleConfig,
 ): readonly Move[] {
-  return getLegalMoves(
-    createState(state.pieces, piece.player, {
-      forcedPieceId: piece.id,
-      moveNumber: state.moveNumber,
-      halfMoveClock: state.halfMoveClock,
-    }),
-    rules,
-  );
+  return generatePieceMoves(playerState, piece.id, rules);
 }
 
 function collectFeatures(
   state: BoardState,
   player: Player,
   rules: RuleConfig,
+  playerState: BoardState,
+  legalMoves: readonly Move[],
+  opponentLegalMoves: readonly Move[],
 ): PlayerFeatures {
-  const playerState = stateForPlayer(state, player);
-  const opponent: Player = player === 1 ? 2 : 1;
-  const opponentState = stateForPlayer(state, opponent);
   const pieces = state.pieces.filter((piece) => piece.player === player);
   const occupiedByPlayer = new Set(pieces.map((piece) => piece.square));
-  const legalMoves = getLegalMoves(playerState, rules);
   const captures = legalMoves.filter(
     (move) => move.capturedPieceIds.length > 0,
   );
-  const opponentCaptures = getLegalMoves(opponentState, rules).filter(
+  const opponentCaptures = opponentLegalMoves.filter(
     (move) => move.capturedPieceIds.length > 0,
   );
   const threatenedIds = new Set(
@@ -138,7 +131,7 @@ function collectFeatures(
   let kingMobility = 0;
 
   for (const candidate of pieces) {
-    const moves = pieceMoves(state, candidate, rules);
+    const moves = pieceMoves(playerState, candidate, rules);
     if (moves.length === 0) blockedPieces += 1;
     if (candidate.kind === "king") kingMobility += moves.length;
   }
@@ -221,8 +214,26 @@ export function evaluatePosition(
     return terminal.winner === perspective ? WIN_SCORE : LOSS_SCORE;
   }
 
-  const own = collectFeatures(state, perspective, rules);
-  const theirs = collectFeatures(state, other, rules);
+  const ownState = stateForPlayer(state, perspective);
+  const otherState = stateForPlayer(state, other);
+  const ownMoves = getLegalMoves(ownState, rules);
+  const otherMoves = getLegalMoves(otherState, rules);
+  const own = collectFeatures(
+    state,
+    perspective,
+    rules,
+    ownState,
+    ownMoves,
+    otherMoves,
+  );
+  const theirs = collectFeatures(
+    state,
+    other,
+    rules,
+    otherState,
+    otherMoves,
+    ownMoves,
+  );
   return weightedFeatures(own, weights) - weightedFeatures(theirs, weights);
 }
 

@@ -63,15 +63,30 @@ export function isCrownSquare(square: number, player: Player): boolean {
 export function hashPosition(
   pieces: readonly Piece[],
   sideToMove: Player,
+  forcedPieceId?: string,
 ): string {
   const serialized = [...pieces]
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => left.square - right.square)
     .map(
       (piece) =>
-        `${piece.id}:${piece.player}:${piece.kind === "king" ? "k" : "m"}:${piece.square}`,
+        `${piece.player}:${piece.kind === "king" ? "k" : "m"}:${piece.square}`,
     )
     .join("|");
-  return `${sideToMove};${serialized}`;
+  const forcedPiece =
+    forcedPieceId === undefined
+      ? undefined
+      : pieces.find((piece) => piece.id === forcedPieceId);
+  if (
+    forcedPieceId !== undefined &&
+    (!forcedPiece || forcedPiece.player !== sideToMove)
+  ) {
+    throw new Error("The forced piece must belong to the side to move.");
+  }
+  const forced =
+    forcedPiece === undefined
+      ? "-"
+      : `${forcedPiece.player}:${forcedPiece.kind === "king" ? "k" : "m"}:${forcedPiece.square}`;
+  return `${sideToMove};f:${forced};${serialized}`;
 }
 
 export function createInitialState(): BoardState {
@@ -133,6 +148,6 @@ export function createState(
       : {}),
     moveNumber: overrides.moveNumber ?? 1,
     halfMoveClock: overrides.halfMoveClock ?? 0,
-    positionHash: hashPosition(cloned, sideToMove),
+    positionHash: hashPosition(cloned, sideToMove, overrides.forcedPieceId),
   });
 }

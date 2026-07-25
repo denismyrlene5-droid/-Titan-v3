@@ -49,6 +49,7 @@ export function chooseMove(
   return {
     ...result,
     move: selected,
+    randomized: true,
     score,
     principalVariation: [selected],
   };

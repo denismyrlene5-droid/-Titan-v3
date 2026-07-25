@@ -30,17 +30,20 @@ The search includes:
 
 - terminal scores of `1_000_000 - ply` for wins and `-1_000_000 + ply` for
   losses, preferring faster wins and delaying forced losses;
+- ply-normalized mate scores in the transposition table, so entries remain
+  correct when the same position is reached at another search depth;
 - engine-validated move ordering for immediate wins, captures, capture length,
   promotions, kings, a transposition-table move, and advancement;
 - principal-variation propagation;
 - capture-only quiescence at Hard, Master, and Titan;
 - a configurable quiescence limit;
-- timeout checks at nodes and between moves;
+- timeout checks at nodes and during expensive move ordering;
 - an always-legal root fallback if the first iteration cannot finish.
 
-Search diagnostics are returned in `SearchResult`: chosen move, score, completed
-depth, node count, elapsed milliseconds, transposition-table hits, alpha-beta
-cutoffs, principal variation, and timeout status.
+Search diagnostics are returned in `SearchResult`: chosen move, searched move,
+whether random difficulty selection replaced it, score, completed depth, node
+count, elapsed milliseconds, transposition-table hits, alpha-beta cutoffs,
+principal variation, and timeout status.
 
 ## Difficulty settings
 
@@ -86,7 +89,10 @@ interface PositionEvaluator {
 ```
 
 Callers may provide an alternative implementation through `AIConfig.evaluator`.
-Phase 3 ships only the handcrafted implementation.
+To reuse a transposition table safely across custom-evaluator searches, callers
+also provide an explicit, stable `AIConfig.evaluatorCacheKey`. A custom
+evaluator without that key gets an isolated namespace on every resolved search
+configuration. Phase 3 ships only the handcrafted implementation.
 
 ## Transposition table
 
@@ -99,8 +105,9 @@ current engine-generated legal list before its score or ordering hint is used.
 The default capacity is 100,000 entries. On reaching the configured limit, the
 table removes the oldest and shallowest records until it is at 75% capacity.
 A caller may reuse one table across `chooseMove` calls. Entries from different
-rules, evaluator instances or weights, and quiescence settings are isolated
-automatically. A caller supplying an explicit `transpositionContextKey` is
+rules, evaluator keys or weights, and quiescence settings are isolated
+automatically. Custom evaluator object identity is never used as its semantic
+cache identity. A caller supplying an explicit `transpositionContextKey` is
 responsible for changing it whenever other score-affecting configuration
 changes.
 
@@ -118,6 +125,7 @@ result still contains a canonical legal fallback and reports depth zero.
 ```sh
 npm test
 npm run test:engine
+npm run test:phase2
 npm run test:ai
 npm run typecheck
 npm run benchmark:ai
@@ -128,7 +136,8 @@ capture, branching multi-capture, king-heavy position, promotion race, tactical
 trap, and endgame. It prints the move, score, completed depth, nodes, elapsed
 time, nodes per second, transposition-table hits, cutoffs, principal variation,
 and timeout status. Its 250 ms per-position budget is deliberately shorter than
-the gameplay default.
+the gameplay default. Before/after stabilization results are recorded in
+`STABILIZATION_BENCHMARK.md`.
 
 ## Known limitations
 

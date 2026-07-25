@@ -7,20 +7,9 @@ import type {
   AIConfig,
   Difficulty,
   EvaluationWeights,
-  PositionEvaluator,
 } from "./types.ts";
 
-const evaluatorIds = new WeakMap<PositionEvaluator, number>();
-let nextEvaluatorId = 1;
-
-function evaluatorId(evaluator: PositionEvaluator): number {
-  const existing = evaluatorIds.get(evaluator);
-  if (existing !== undefined) return existing;
-  const assigned = nextEvaluatorId;
-  nextEvaluatorId += 1;
-  evaluatorIds.set(evaluator, assigned);
-  return assigned;
-}
+let nextIsolatedEvaluatorNamespace = 1;
 
 function evaluationKey(weights: EvaluationWeights): string {
   return Object.keys(DEFAULT_EVALUATION_WEIGHTS)
@@ -44,7 +33,9 @@ function contextKey(
     rules.onePieceRemainingMeansLoss,
   ].join(",");
   const evaluatorKey = customEvaluator
-    ? `custom:${evaluatorId(config.evaluator)}`
+    ? config.evaluatorCacheKey?.trim()
+      ? `custom:${JSON.stringify(config.evaluatorCacheKey.trim())}`
+      : `custom-isolated:${nextIsolatedEvaluatorNamespace++}`
     : `handcrafted:${evaluationKey(config.evaluationWeights)}`;
   return [
     rulesKey,

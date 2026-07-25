@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { Player } from "../../../packages/game-engine/src/index.ts";
+import {
+  createInitialState,
+  createState,
+  type Player,
+} from "../../../packages/game-engine/src/index.ts";
 import { Board } from "./components/Board.tsx";
 import { GameControls } from "./components/GameControls.tsx";
 import { MoveHistory } from "./components/MoveHistory.tsx";
@@ -95,7 +99,11 @@ export default function App() {
   const beginRound = () => {
     cancelPendingComputerAction();
     recordedResult.current = undefined;
-    setSession((current) => createGameSession(current.options));
+    setSession((current) => {
+      const initial = createInitialState();
+      const board = createState(initial.pieces, match.roundStarter);
+      return createGameSession(current.options, board);
+    });
     setNotice(undefined);
   };
 
