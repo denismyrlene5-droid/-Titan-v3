@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_RULE_CONFIG,
+  applyMove,
   createInitialState,
   createState,
   getLegalMoves,
@@ -200,6 +201,36 @@ test("draw offer can be rejected or accepted", () => {
   assert.equal(rejected.drawOfferedBy, undefined);
   const accepted = respondToDraw(offerDraw(rejected, 2), true);
   assert.deepEqual(accepted.result, { reason: "draw_agreement" });
+});
+
+test("threefold repetition is adjudicated automatically", () => {
+  const board = createState([
+    piece("p1-a", 1, 31, "king"),
+    piece("p1-b", 1, 40, "king"),
+    piece("p2-a", 2, 8, "king"),
+    piece("p2-b", 2, 19, "king"),
+  ]);
+  const move = getLegalMoves(board, DEFAULT_RULE_CONFIG)[0]!;
+  const next = applyMove(board, move, DEFAULT_RULE_CONFIG);
+  const session = {
+    ...createGameSession({}, board),
+    positionCounts: { [board.positionHash]: 1, [next.positionHash]: 2 },
+  };
+  const completed = playCanonicalMove(session, move);
+  assert.deepEqual(completed.result, { reason: "draw_repetition" });
+});
+
+test("eighty quiet plies trigger the no-progress draw", () => {
+  const board = createState([
+    piece("p1-a", 1, 31, "king"),
+    piece("p1-b", 1, 40, "king"),
+    piece("p2-a", 2, 8, "king"),
+    piece("p2-b", 2, 19, "king"),
+  ], 1, { halfMoveClock: 79 });
+  const move = getLegalMoves(board, DEFAULT_RULE_CONFIG)[0]!;
+  const completed = playCanonicalMove(createGameSession({}, board), move);
+  assert.equal(completed.board.halfMoveClock, 80);
+  assert.deepEqual(completed.result, { reason: "draw_no_progress" });
 });
 
 test("match scoring counts wins and draws and finds a target winner", () => {

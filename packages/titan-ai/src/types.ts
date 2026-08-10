@@ -22,6 +22,8 @@ export interface EvaluationWeights {
   readonly vulnerablePiece: number;
   readonly blockedPiece: number;
   readonly kingMobility: number;
+  readonly backRankGuard: number;
+  readonly initiative: number;
   readonly opponentThreat: number;
   readonly immediateLossDanger: number;
   readonly onePieceDanger: number;

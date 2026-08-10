@@ -847,13 +847,14 @@ test("quiescence counts each visited node exactly once", () => {
 test("difficulty profiles have genuinely different search limits", () => {
   assert.deepEqual(
     Object.values(DIFFICULTY_CONFIGS).map((config) => config.maxDepth),
-    [1, 3, 5, 7, 10],
+    [1, 4, 6, 7, 10],
   );
   assert.deepEqual(
     Object.values(DIFFICULTY_CONFIGS).map((config) => config.timeLimitMs),
-    [100, 500, 1_500, 3_500, 7_000],
+    [100, 700, 2_000, 3_500, 7_000],
   );
   assert.equal(DIFFICULTY_CONFIGS.easy.useQuiescence, false);
+  assert.equal(DIFFICULTY_CONFIGS.medium.useQuiescence, true);
   assert.equal(DIFFICULTY_CONFIGS.titan.useQuiescence, true);
   assert.equal(DIFFICULTY_CONFIGS.easy.useTranspositionTable, false);
   assert.equal(DIFFICULTY_CONFIGS.titan.useTranspositionTable, true);
