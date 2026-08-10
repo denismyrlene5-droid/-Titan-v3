@@ -8,6 +8,7 @@ import { Board } from "./components/Board.tsx";
 import { GameControls } from "./components/GameControls.tsx";
 import { MoveHistory } from "./components/MoveHistory.tsx";
 import { PlayerCard } from "./components/PlayerCard.tsx";
+import { useDialogFocus } from "./components/useDialogFocus.ts";
 import {
   acceptComputerDraw,
   applyComputerSearchResult,
@@ -15,6 +16,7 @@ import {
   isComputerTurn,
 } from "./game/computer.ts";
 import type { ComputerSearchResponse } from "./game/computer.ts";
+import { playGameSound } from "./game/audio.ts";
 import {
   chooseDestination,
   createGameSession,
@@ -54,7 +56,11 @@ function playerName(options: GameOptions, player: Player): string {
 
 function resultText(result: GameResult | undefined, options: GameOptions): string {
   if (!result) return "";
-  if (!result.winner) return "Game drawn by agreement";
+  if (!result.winner) {
+    if (result.reason === "draw_repetition") return "Game drawn by threefold repetition";
+    if (result.reason === "draw_no_progress") return "Game drawn by the no-progress rule";
+    return "Game drawn by agreement";
+  }
   const reason = result.reason.replaceAll("_", " ");
   return `${playerName(options, result.winner)} wins · ${reason}`;
 }
@@ -73,6 +79,8 @@ export default function App() {
   const recordedResult = useRef<GameResult | undefined>(undefined);
   const computerActionGuard = useRef(new ComputerActionGuard());
   const computerWorker = useRef<Worker | null>(null);
+  const soundedPly = useRef(0);
+  const soundedResult = useRef<GameResult | undefined>(undefined);
 
   const cancelPendingComputerAction = () => {
     computerActionGuard.current.cancel();
@@ -116,6 +124,32 @@ export default function App() {
       setMatch((current) => recordGameResult(current, session.result!));
     }
   }, [session.result]);
+
+  useEffect(() => {
+    if (session.history.length === 0) {
+      soundedPly.current = 0;
+      soundedResult.current = undefined;
+      return;
+    }
+    const latest = session.history.at(-1);
+    if (!latest || latest.ply <= soundedPly.current) return;
+    soundedPly.current = latest.ply;
+    playGameSound(
+      latest.promoted ? "promotion" : latest.captures > 0 ? "capture" : "move",
+      sound,
+    );
+  }, [session.history, sound]);
+
+  useEffect(() => {
+    if (!session.result || soundedResult.current === session.result) return;
+    soundedResult.current = session.result;
+    playGameSound(session.result.winner ? "win" : "draw", sound);
+  }, [session.result, sound]);
+
+  const dialogOpen = settingsOpen ||
+    Boolean(session.drawOfferedBy && session.options.opponentType === "human") ||
+    Boolean(session.status === "finished" && session.result);
+  useDialogFocus(dialogOpen, settingsOpen ? () => setSettingsOpen(false) : undefined);
 
   const computerTurn =
     screen === "game" &&
@@ -188,7 +222,10 @@ export default function App() {
         onHuman={() => beginSetup("human")}
         onComputer={() => beginSetup("computer")}
         sound={sound}
-        onSound={() => setSound((current) => !current)}
+        onSound={() => {
+          playGameSound("click", true);
+          setSound((current) => !current);
+        }}
       />
     );
   }
@@ -362,7 +399,10 @@ export default function App() {
                 current === "player1" ? "player2" : "player1",
               )
             }
-            onSound={() => setSound((current) => !current)}
+            onSound={() => {
+              playGameSound("click", true);
+              setSound((current) => !current);
+            }}
             onSettings={() => setSettingsOpen(true)}
           />
         </aside>
@@ -426,7 +466,10 @@ export default function App() {
             <button className="modal-close" type="button" aria-label="Close settings" onClick={() => setSettingsOpen(false)}>×</button>
             <span className="eyebrow">Preferences</span>
             <h2 id="settings-title">Game settings</h2>
-            <button type="button" onClick={() => setSound((current) => !current)}>
+            <button type="button" onClick={() => {
+              playGameSound("click", true);
+              setSound((current) => !current);
+            }}>
               Sound <strong>{sound ? "On" : "Off"}</strong>
             </button>
             {screen === "game" && (

@@ -101,6 +101,7 @@ export function Board({
               piece !== undefined && view.selectablePieceIds.has(piece.id);
             const captureTarget =
               destination && view.captureRequired;
+            const interactive = Boolean(destination || selectable);
             const classNames = [
               "board-square",
               playable ? "playable" : "light",
@@ -123,8 +124,9 @@ export function Board({
                 key={`${row}-${column}`}
                 role="gridcell"
                 type="button"
-                disabled={!playable || disabled}
+                disabled={!playable || disabled || !interactive}
                 onClick={action}
+                aria-selected={selected}
                 aria-label={
                   piece
                     ? `${playerLabel(piece.player)} ${piece.kind} on square ${piece.square + 1}${selectable ? ", selectable" : ""}`

@@ -28,6 +28,9 @@ export const DEFAULT_GAME_OPTIONS: GameOptions = Object.freeze({
   matchTarget: 3,
 });
 
+export const REPETITION_DRAW_COUNT = 3;
+export const NO_PROGRESS_PLY_LIMIT = 80;
+
 export function createGameSession(
   options: Partial<GameOptions> = {},
   board: BoardState = createInitialState(),
@@ -39,6 +42,7 @@ export function createGameSession(
     options: mergedOptions,
     pathPrefix: Object.freeze([]),
     history: Object.freeze([]),
+    positionCounts: Object.freeze({ [board.positionHash]: 1 }),
     status: "playing",
   });
 }
@@ -130,6 +134,42 @@ function terminalResult(board: BoardState): GameResult | undefined {
     : undefined;
 }
 
+function adjudicateResult(
+  board: BoardState,
+  positionCounts: Readonly<Record<string, number>>,
+): GameResult | undefined {
+  const decisive = terminalResult(board);
+  if (decisive) return decisive;
+  if ((positionCounts[board.positionHash] ?? 0) >= REPETITION_DRAW_COUNT) {
+    return { reason: "draw_repetition" };
+  }
+  if (board.halfMoveClock >= NO_PROGRESS_PLY_LIMIT) {
+    return { reason: "draw_no_progress" };
+  }
+  return undefined;
+}
+
+function completeMove(session: GameSession, canonical: Move): GameSession {
+  const board = applyMove(session.board, canonical, DEFAULT_RULE_CONFIG);
+  const positionCounts = Object.freeze({
+    ...session.positionCounts,
+    [board.positionHash]: (session.positionCounts[board.positionHash] ?? 0) + 1,
+  });
+  const result = adjudicateResult(board, positionCounts);
+  return Object.freeze({
+    ...session,
+    board,
+    positionCounts,
+    selectedPieceId: undefined,
+    pathPrefix: Object.freeze([]),
+    lastMove: canonical,
+    history: Object.freeze([...session.history, historyEntry(session, canonical)]),
+    status: result ? "finished" : "playing",
+    result,
+    drawOfferedBy: undefined,
+  });
+}
+
 export function chooseDestination(
   session: GameSession,
   square: number,
@@ -160,20 +200,7 @@ export function chooseDestination(
   );
   if (!validation.valid || !validation.canonicalMove) return session;
 
-  const canonical = validation.canonicalMove;
-  const board = applyMove(session.board, canonical, DEFAULT_RULE_CONFIG);
-  const result = terminalResult(board);
-  return Object.freeze({
-    ...session,
-    board,
-    selectedPieceId: undefined,
-    pathPrefix: Object.freeze([]),
-    lastMove: canonical,
-    history: Object.freeze([...session.history, historyEntry(session, canonical)]),
-    status: result ? "finished" : "playing",
-    result,
-    drawOfferedBy: undefined,
-  });
+  return completeMove(session, validation.canonicalMove);
 }
 
 export function playCanonicalMove(
@@ -183,20 +210,7 @@ export function playCanonicalMove(
   if (session.status !== "playing") return session;
   const validation = validateMove(session.board, move, DEFAULT_RULE_CONFIG);
   if (!validation.valid || !validation.canonicalMove) return session;
-  const canonical = validation.canonicalMove;
-  const board = applyMove(session.board, canonical, DEFAULT_RULE_CONFIG);
-  const result = terminalResult(board);
-  return Object.freeze({
-    ...session,
-    board,
-    selectedPieceId: undefined,
-    pathPrefix: Object.freeze([]),
-    lastMove: canonical,
-    history: Object.freeze([...session.history, historyEntry(session, canonical)]),
-    status: result ? "finished" : "playing",
-    result,
-    drawOfferedBy: undefined,
-  });
+  return completeMove(session, validation.canonicalMove);
 }
 
 export function resignGame(

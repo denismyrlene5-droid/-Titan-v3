@@ -12,6 +12,8 @@ engine, and Phase 3 adds the first strong, search-based Titan opponent.
 - Promotion and the one-piece-remaining loss rule
 - Human vs Human and Human vs Computer matches
 - Responsive board interaction, match scoring, draws, resignation, and history
+- Threefold-repetition and 80-ply no-progress draw adjudication
+- Synthesized move, capture, promotion, result, and interface sounds
 - Iterative-deepening minimax search with alpha-beta pruning
 - Capture quiescence, move ordering, principal variations, and a bounded
   transposition table
@@ -110,9 +112,12 @@ docs/ai/PHASE_3_AI.md       Phase 3 architecture and limitations
 
 The framework-independent `chooseMove` API is synchronous, while the React app
 runs it in a cancellable Web Worker so search does not block interaction.
-Phase 3 has no opening book, tablebase, repetition adjudication, or trained
-evaluator. Titan is a strong first search version, not a claim of complete or
+Phase 3 has no opening book, tablebase, or trained evaluator. Titan is a strong
+first search version, not a claim of complete or
 unbeatable play.
+
+The current draw defaults are three occurrences of the same position and 80
+plies without a capture or promotion.
 
 Dataset collection and trained evaluation are deferred to Phase 4. The
 `PositionEvaluator` interface allows a future model to replace or supplement

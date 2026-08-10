@@ -143,7 +143,11 @@ export function SetupScreen({
           className="primary-action"
           type="button"
           disabled={!options.playerName.trim() || !options.opponentName.trim()}
-          onClick={() => onStart({ ...options, playerName: options.playerName.trim() })}
+          onClick={() => onStart({
+            ...options,
+            playerName: options.playerName.trim(),
+            opponentName: options.opponentName.trim(),
+          })}
         >
           Enter arena <span>→</span>
         </button>

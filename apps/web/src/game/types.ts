@@ -15,7 +15,9 @@ export type ResultReason =
   | "one_piece_remaining"
   | "no_legal_moves"
   | "resignation"
-  | "draw_agreement";
+  | "draw_agreement"
+  | "draw_repetition"
+  | "draw_no_progress";
 
 export interface GameOptions {
   readonly playerName: string;
@@ -55,6 +57,7 @@ export interface GameSession {
   readonly status: GameStatus;
   readonly result?: GameResult | undefined;
   readonly drawOfferedBy?: Player | undefined;
+  readonly positionCounts: Readonly<Record<string, number>>;
 }
 
 export interface InteractionView {

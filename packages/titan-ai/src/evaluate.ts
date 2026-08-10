@@ -35,6 +35,8 @@ export const DEFAULT_EVALUATION_WEIGHTS: EvaluationWeights = Object.freeze({
   vulnerablePiece: -18,
   blockedPiece: -12,
   kingMobility: 6,
+  backRankGuard: 7,
+  initiative: 5,
   opponentThreat: -20,
   immediateLossDanger: -250_000,
   onePieceDanger: -500_000,
@@ -54,6 +56,8 @@ interface PlayerFeatures {
   readonly vulnerablePieces: number;
   readonly blockedPieces: number;
   readonly kingMobility: number;
+  readonly backRankGuard: number;
+  readonly initiative: number;
   readonly opponentThreats: number;
   readonly immediateLoss: number;
   readonly onePieceDanger: number;
@@ -161,6 +165,11 @@ function collectFeatures(
       .length,
     blockedPieces,
     kingMobility,
+    backRankGuard: pieces.filter((piece) =>
+      piece.kind === "man" &&
+      squareToCoordinate(piece.square).row === (player === 1 ? 9 : 0),
+    ).length,
+    initiative: state.sideToMove === player ? 1 : 0,
     opponentThreats: opponentCaptures.reduce(
       (total, move) => total + move.capturedPieceIds.length,
       0,
@@ -189,6 +198,8 @@ function weightedFeatures(
     features.vulnerablePieces * weights.vulnerablePiece +
     features.blockedPieces * weights.blockedPiece +
     features.kingMobility * weights.kingMobility +
+    features.backRankGuard * weights.backRankGuard +
+    features.initiative * weights.initiative +
     features.opponentThreats * weights.opponentThreat +
     features.immediateLoss * weights.immediateLossDanger +
     features.onePieceDanger * weights.onePieceDanger

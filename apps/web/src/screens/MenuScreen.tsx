@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDialogFocus } from "../components/useDialogFocus.ts";
 
 interface MenuScreenProps {
   readonly onNew: () => void;
@@ -10,6 +11,7 @@ interface MenuScreenProps {
 
 export function MenuScreen(props: MenuScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  useDialogFocus(settingsOpen, () => setSettingsOpen(false));
   return (
     <main className="menu-screen">
       <div className="menu-atmosphere" aria-hidden="true" />
